@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <title>Nunchuk Virtual Controller</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #080c14;
+      --card-bg: rgba(16, 24, 38, 0.7);
+      --cyan: #00f0ff;
+      --magenta: #ff0055;
+      --yellow: #ffe600;
+      --green: #00ff88;
+      --border-color: rgba(0, 240, 255, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: radial-gradient(circle at center, #111d33 0%, #060a12 100%);
+      color: #fff;
+      font-family: 'Rajdhani', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.5rem;
+      overflow: hidden;
+    }
+
+    header {
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.8rem 1.2rem;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.15);
+    }
+
+    .title {
+      font-family: 'Orbitron', monospace;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--cyan);
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ff4444;
+      box-shadow: 0 0 8px #ff4444;
+      transition: all 0.3s;
+    }
+
+    .status-dot.connected {
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green);
+    }
+
+    /* 컨트롤러 바디 */
+    .controller-container {
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      margin: auto 0;
+    }
+
+    /* 조이스틱 영역 */
+    .joystick-zone {
+      position: relative;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 240, 255, 0.05) 0%, rgba(10, 16, 26, 0.8) 100%);
+      border: 2px solid var(--cyan);
+      box-shadow: 0 0 25px rgba(0, 240, 255, 0.2), inset 0 0 30px rgba(0, 240, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    .joystick-zone:active {
+      cursor: grabbing;
+    }
+
+    .joystick-crosshair {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .joystick-crosshair::before,
+    .joystick-crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(0, 240, 255, 0.2);
+    }
+
+    .joystick-crosshair::before {
+      top: 50%;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+    }
+
+    .joystick-crosshair::after {
+      left: 50%;
+      top: 10%;
+      bottom: 10%;
+      width: 1px;
+    }
+
+    .joystick-knob {
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #00f0ff 0%, #005588 70%, #002244 100%);
+      border: 2px solid #fff;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8), 0 0 20px var(--cyan);
+      pointer-events: none;
+      transform: translate(0px, 0px);
+      transition: transform 0.05s ease-out;
+    }
+
+    /* 버튼 영역 */
+    .buttons-container {
+      display: flex;
+      gap: 1.5rem;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .nunchuk-btn {
+      flex: 1;
+      max-width: 160px;
+      height: 90px;
+      border-radius: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      transition: all 0.1s;
+      outline: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* C 버튼 (사격) */
+    .btn-c {
+      background: linear-gradient(135deg, rgba(255, 0, 85, 0.2) 0%, rgba(255, 0, 85, 0.05) 100%);
+      border: 2px solid var(--magenta);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(255, 0, 85, 0.25);
+    }
+
+    .btn-c:active, .btn-c.active {
+      background: var(--magenta);
+      box-shadow: 0 0 35px var(--magenta);
+      transform: scale(0.95);
+    }
+
+    /* Z 버튼 (재장전) */
+    .btn-z {
+      background: linear-gradient(135deg, rgba(255, 230, 0, 0.2) 0%, rgba(255, 230, 0, 0.05) 100%);
+      border: 2px solid var(--yellow);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(255, 230, 0, 0.25);
+    }
+
+    .btn-z:active, .btn-z.active {
+      background: var(--yellow);
+      color: #000;
+      box-shadow: 0 0 35px var(--yellow);
+      transform: scale(0.95);
+    }
+
+    .btn-label {
+      font-size: 1.4rem;
+      letter-spacing: 2px;
+    }
+
+    .btn-sub {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* 텔레메트리 모니터 */
+    .telemetry {
+      width: 100%;
+      max-width: 500px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.75rem 1.25rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      color: #88a0c0;
+    }
+
+    .val {
+      color: var(--cyan);
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">🎮 NUNCHUK VIRTUAL</div>
+    <div class="status-badge">
+      <div id="statusDot" class="status-dot"></div>
+      <span id="statusText">CONNECTING...</span>
+    </div>
+  </header>
+
+  <div class="controller-container">
+    <!-- 조이스틱 -->
+    <div class="joystick-zone" id="joystickZone">
+      <div class="joystick-crosshair"></div>
+      <div class="joystick-knob" id="joystickKnob"></div>
+    </div>
+
+    <!-- 버튼 (C: 사격, Z: 재장전) -->
+    <div class="buttons-container">
+      <button class="nunchuk-btn btn-z" id="btnZ">
+        <span class="btn-label">Z</span>
+        <span class="btn-sub">RELOAD</span>
+      </button>
+      <button class="nunchuk-btn btn-c" id="btnC">
+        <span class="btn-label">C</span>
+        <span class="btn-sub">FIRE</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="telemetry">
+    <div>STICK: X: <span class="val" id="valX">0.00</span> | Y: <span class="val" id="valY">0.00</span></div>
+    <div>BUTTONS: C:<span class="val" id="valC">0</span> Z:<span class="val" id="valZ">0</span></div>
+  </div>
+
+  <script>
+    const host = window.location.hostname || 'localhost';
+    const port = window.location.port || '8000';
+    const wsUrl = `ws://${host}:${port}/ws/virtual`;
+
+    let ws = null;
+    let stick = { x: 0.0, y: 0.0 };
+    let buttons = { c: false, z: false };
+
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const joystickZone = document.getElementById('joystickZone');
+    const joystickKnob = document.getElementById('joystickKnob');
+    const btnC = document.getElementById('btnC');
+    const btnZ = document.getElementById('btnZ');
+    const valX = document.getElementById('valX');
+    const valY = document.getElementById('valY');
+    const valC = document.getElementById('valC');
+    const valZ = document.getElementById('valZ');
+
+    function connectWebSocket() {
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        statusDot.classList.add('connected');
+        statusText.innerText = 'ONLINE';
+        statusText.style.color = '#00ff88';
+      };
+
+      ws.onclose = () => {
+        statusDot.classList.remove('connected');
+        statusText.innerText = 'DISCONNECTED';
+        statusText.style.color = '#ff4444';
+        setTimeout(connectWebSocket, 1500);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    connectWebSocket();
+
+    // 50Hz 송신 루프 (20ms)
+    setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const packet = {
+          type: "nunchuk_input",
+          source: "virtual_pad",
+          stick: { x: stick.x, y: stick.y },
+          accel: { x: 512, y: 512, z: 512 },
+          buttons: { c: buttons.c, z: buttons.z },
+          timestamp: Date.now()
+        };
+        ws.send(JSON.stringify(packet));
+      }
+    }, 20);
+
+    // 조이스틱 터치/마우스 이벤트 처리
+    const maxRadius = 70;
+    let isDragging = false;
+    let rect = null;
+
+    function updateJoystick(clientX, clientY) {
+      if (!rect) rect = joystickZone.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      let dx = clientX - centerX;
+      let dy = clientY - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > maxRadius) {
+        dx = (dx / dist) * maxRadius;
+        dy = (dy / dist) * maxRadius;
+      }
+
+      joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+      // 정규화 (-1.0 ~ 1.0, Y축은 상향이 +1.0)
+      stick.x = parseFloat((dx / maxRadius).toFixed(2));
+      stick.y = parseFloat((-dy / maxRadius).toFixed(2));
+
+      valX.innerText = stick.x.toFixed(2);
+      valY.innerText = stick.y.toFixed(2);
+    }
+
+    function resetJoystick() {
+      isDragging = false;
+      stick.x = 0.0;
+      stick.y = 0.0;
+      joystickKnob.style.transform = 'translate(0px, 0px)';
+      valX.innerText = '0.00';
+      valY.innerText = '0.00';
+    }
+
+    joystickZone.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      rect = joystickZone.getBoundingClientRect();
+      updateJoystick(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) updateJoystick(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) resetJoystick();
+    });
+
+    // 터치 이벤트
+    joystickZone.addEventListener('touchstart', (e) => {
+      isDragging = true;
+      rect = joystickZone.getBoundingClientRect();
+      const touch = e.touches[0];
+      updateJoystick(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (isDragging) {
+        for (let i = 0; i < e.touches.length; i++) {
+          const touch = e.touches[i];
+          updateJoystick(touch.clientX, touch.clientY);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchend', (e) => {
+      if (isDragging && e.touches.length === 0) {
+        resetJoystick();
+      }
+    });
+
+    // C 버튼 (사격)
+    function setBtnC(state) {
+      buttons.c = state;
+      valC.innerText = state ? '1' : '0';
+      btnC.classList.toggle('active', state);
+    }
+    btnC.addEventListener('mousedown', () => setBtnC(true));
+    btnC.addEventListener('mouseup', () => setBtnC(false));
+    btnC.addEventListener('mouseleave', () => setBtnC(false));
+    btnC.addEventListener('touchstart', (e) => { e.preventDefault(); setBtnC(true); });
+    btnC.addEventListener('touchend', (e) => { e.preventDefault(); setBtnC(false); });
+
+    // Z 버튼 (재장전)
+    function setBtnZ(state) {
+      buttons.z = state;
+      valZ.innerText = state ? '1' : '0';
+      btnZ.classList.toggle('active', state);
+    }
+    btnZ.addEventListener('mousedown', () => setBtnZ(true));
+    btnZ.addEventListener('mouseup', () => setBtnZ(false));
+    btnZ.addEventListener('mouseleave', () => setBtnZ(false));
+    btnZ.addEventListener('touchstart', (e) => { e.preventDefault(); setBtnZ(true); });
+    btnZ.addEventListener('touchend', (e) => { e.preventDefault(); setBtnZ(false); });
+
+    // 키보드 바인딩 (PC에서 테스트용)
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.key === 'c' || e.key === 'C') setBtnC(true);
+      if (e.key === 'r' || e.key === 'R' || e.key === 'z' || e.key === 'Z') setBtnZ(true);
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space' || e.key === 'c' || e.key === 'C') setBtnC(false);
+      if (e.key === 'r' || e.key === 'R' || e.key === 'z' || e.key === 'Z') setBtnZ(false);
+    });
+  </script>
+</body>
+</html>
