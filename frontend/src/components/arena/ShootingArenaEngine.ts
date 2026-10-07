@@ -12,6 +12,7 @@ import {
   PlayerPose,
   VersusMatchStats,
   TargetSpawnPacket,
+  TargetKeyword,
 } from '@/types';
 import { SoundManager } from '@/core/audio/SoundManager';
 import { VoiceManager } from '@/core/audio/VoiceManager';
@@ -20,10 +21,14 @@ import { InputManager } from '@/core/input/InputManager';
 import { CyberAIRival, TargetObjectRef } from '@/core/ai/CyberAIRival';
 import { SpectatorCameraController } from '@/core/spectator/SpectatorCameraController';
 
+export const TARGET_KEYWORDS: TargetKeyword[] = ['정보', '통신', '제어', '회로', '인공', '전자'];
+
 export interface TargetObject extends TargetObjectRef {
   id: string;
   mesh: THREE.Group;
   shape: TargetShape;
+  keyword: TargetKeyword;
+  points: number; // 정보/통신: 2점, 나머지: 1점
   basePos: THREE.Vector3;
   velocity: THREE.Vector3;
   frequency: number;
@@ -32,6 +37,7 @@ export interface TargetObject extends TargetObjectRef {
   isHit: boolean;
   hitProgress: number;
   subMeshesToRotate?: THREE.Mesh[];
+  labelSprite?: THREE.Sprite;
 }
 
 interface Particle {
@@ -614,6 +620,7 @@ export class ShootingArenaEngine {
     const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
     this.vrPromptMesh = new THREE.Mesh(geo, mat);
     this.vrPromptMesh.position.set(0, 1.6, -2.5);
+    this.vrPromptMesh.visible = false; // 메뉴 UI와의 중복 겹침 방지 (게임 종료 시 결과판으로만 활성화)
     this.scene.add(this.vrPromptMesh);
   }
 
@@ -897,20 +904,79 @@ export class ShootingArenaEngine {
     this.cyberAI.setDifficulty(diff);
   }
 
-  private createTargetMesh(shape: TargetShape): { group: THREE.Group; subMeshesToRotate: THREE.Mesh[] } {
+  /** 표적 상단 6가지 키워드 라벨 스프라이트 생성 (정보/통신: 2점, 나머지: 1점) */
+  private createTargetLabelSprite(keyword: TargetKeyword, points: number, scale: number = 1.0): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+
+    const isBonus = points === 2; // 정보, 통신
+
+    ctx.clearRect(0, 0, 256, 128);
+
+    // 1. 네온 뱃지 배경
+    ctx.fillStyle = isBonus ? 'rgba(4, 24, 52, 0.92)' : 'rgba(15, 20, 32, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect(10, 8, 236, 112, 18);
+    ctx.fill();
+
+    // 2. 네온 테두리
+    ctx.strokeStyle = isBonus ? '#00f0ff' : '#ff0055';
+    ctx.lineWidth = isBonus ? 6 : 3.5;
+    ctx.stroke();
+
+    if (isBonus) {
+      // 황금빛 2점 헤더
+      ctx.fillStyle = '#ffe600';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('★ 2점 ★', 128, 40);
+
+      // 형광 시안 메인 키워드 ("정보", "통신")
+      ctx.fillStyle = '#00f0ff';
+      ctx.font = '900 56px sans-serif';
+      ctx.fillText(keyword, 128, 96);
+    } else {
+      // 1점 일반 헤더
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('1점', 128, 40);
+
+      // 순백색 메인 키워드 ("제어", "회로", "인공", "전자")
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 54px sans-serif';
+      ctx.fillText(keyword, 128, 96);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(1.4 * scale, 0.7 * scale, 1.0);
+    sprite.position.set(0, 0.65 * scale, 0);
+
+    return sprite;
+  }
+
+  private createTargetMesh(shape: TargetShape, points: number = 1): { group: THREE.Group; subMeshesToRotate: THREE.Mesh[] } {
     const group = new THREE.Group();
     const subMeshesToRotate: THREE.Mesh[] = [];
     const cfg = this.difficultyConfigs[this.currentDifficulty];
     const s = cfg.scale;
+    const isBonus = points === 2; // 정보/통신 (황금빛/시안 하이라이트)
 
     if (shape === 'drone') {
+      const bodyColor = isBonus ? 0x0e2a44 : 0x1a2233;
       const bodyGeo = new THREE.SphereGeometry(0.35 * s, 16, 16);
-      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a2233, metalness: 0.9, roughness: 0.2 });
+      const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, metalness: 0.9, roughness: 0.2 });
       const body = new THREE.Mesh(bodyGeo, bodyMat);
       group.add(body);
 
-      const eyeGeo = new THREE.SphereGeometry(0.12 * s, 16, 16);
-      const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0055 });
+      const eyeColor = isBonus ? 0xffe600 : 0xff0055;
+      const eyeGeo = new THREE.SphereGeometry(0.13 * s, 16, 16);
+      const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
       const eye = new THREE.Mesh(eyeGeo, eyeMat);
       eye.position.set(0, 0, 0.3 * s);
       group.add(eye);
@@ -930,19 +996,21 @@ export class ShootingArenaEngine {
         arm.position.set(px * 0.6, py * 0.6, pz * 0.6);
         group.add(arm);
 
+        const propColor = isBonus ? 0xffe600 : 0x00f0ff;
         const propGeo = new THREE.BoxGeometry(0.4 * s, 0.02 * s, 0.06 * s);
-        const propMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+        const propMat = new THREE.MeshBasicMaterial({ color: propColor });
         const prop = new THREE.Mesh(propGeo, propMat);
         prop.position.set(px, py, pz);
         group.add(prop);
         subMeshesToRotate.push(prop);
       });
     } else if (shape === 'sphere') {
+      const coreColor = isBonus ? 0xffe600 : 0x00f0ff;
       const coreGeo = new THREE.SphereGeometry(0.45 * s, 24, 24);
       const coreMat = new THREE.MeshStandardMaterial({
-        color: 0x00f0ff,
-        emissive: 0x0088cc,
-        emissiveIntensity: 0.8,
+        color: coreColor,
+        emissive: isBonus ? 0xcc9900 : 0x0088cc,
+        emissiveIntensity: 0.9,
         roughness: 0.1,
       });
       const core = new THREE.Mesh(coreGeo, coreMat);
@@ -956,9 +1024,9 @@ export class ShootingArenaEngine {
     } else if (shape === 'cube') {
       const cubeGeo = new THREE.BoxGeometry(0.7 * s, 0.7 * s, 0.7 * s);
       const cubeMat = new THREE.MeshStandardMaterial({
-        color: 0x221133,
-        emissive: 0xff0055,
-        emissiveIntensity: 0.7,
+        color: isBonus ? 0x332200 : 0x221133,
+        emissive: isBonus ? 0xffe600 : 0xff0055,
+        emissiveIntensity: 0.8,
         metalness: 0.8,
       });
       const cube = new THREE.Mesh(cubeGeo, cubeMat);
@@ -967,9 +1035,9 @@ export class ShootingArenaEngine {
     } else if (shape === 'disc') {
       const discGeo = new THREE.CylinderGeometry(0.6 * s, 0.6 * s, 0.15 * s, 24);
       const discMat = new THREE.MeshStandardMaterial({
-        color: 0xffe600,
-        emissive: 0x998800,
-        emissiveIntensity: 0.6,
+        color: isBonus ? 0x00f0ff : 0xffe600,
+        emissive: isBonus ? 0x0088cc : 0x998800,
+        emissiveIntensity: 0.7,
         metalness: 0.7,
       });
       const disc = new THREE.Mesh(discGeo, discMat);
@@ -982,7 +1050,17 @@ export class ShootingArenaEngine {
 
   private spawnTarget() {
     const id = 't_' + Math.random().toString(36).substring(2, 9);
-    const { group, subMeshesToRotate } = this.createTargetMesh(this.currentShape);
+
+    // 6가지 문구 랜덤 배정 ('정보', '통신', '제어', '회로', '인공', '전자')
+    const keyword = TARGET_KEYWORDS[Math.floor(Math.random() * TARGET_KEYWORDS.length)];
+    const points = (keyword === '정보' || keyword === '통신') ? 2 : 1;
+
+    const cfg = this.difficultyConfigs[this.currentDifficulty];
+    const { group, subMeshesToRotate } = this.createTargetMesh(this.currentShape, points);
+
+    // 표적 상단에 텍스트 뱃지 스프라이트 부착
+    const labelSprite = this.createTargetLabelSprite(keyword, points, cfg.scale);
+    group.add(labelSprite);
 
     const x = (Math.random() - 0.5) * 16;
     const y = 1.2 + Math.random() * 3.5;
@@ -990,7 +1068,6 @@ export class ShootingArenaEngine {
     const basePos = new THREE.Vector3(x, y, z);
     group.position.copy(basePos);
 
-    const cfg = this.difficultyConfigs[this.currentDifficulty];
     const vx = (Math.random() > 0.5 ? 1 : -1) * (cfg.speed * (0.6 + Math.random() * 0.8));
     const vy = (Math.random() - 0.5) * cfg.speed * 0.5;
     const velocity = new THREE.Vector3(vx, vy, 0);
@@ -1001,6 +1078,8 @@ export class ShootingArenaEngine {
       id,
       mesh: group,
       shape: this.currentShape,
+      keyword,
+      points,
       basePos,
       velocity,
       frequency,
@@ -1009,12 +1088,13 @@ export class ShootingArenaEngine {
       isHit: false,
       hitProgress: 0,
       subMeshesToRotate,
+      labelSprite,
     };
 
     this.targetsGroup.add(group);
     this.activeTargets.push(targetObj);
 
-    // 원격 및 관람객 클라이언트에 스폰 브로드캐스트
+    // 원격 및 관람객 클라이언트에 키워드와 점수를 포함하여 스폰 브로드캐스트
     this.inputManager.sendTargetSpawn({
       id,
       shape: this.currentShape,
@@ -1022,13 +1102,24 @@ export class ShootingArenaEngine {
       velocity: [vx, vy, 0],
       frequency,
       amplitude,
+      keyword,
+      points,
     });
   }
 
   private spawnTargetFromPacket(data: TargetSpawnPacket) {
     if (this.activeTargets.some((t) => t.id === data.id)) return;
 
-    const { group, subMeshesToRotate } = this.createTargetMesh(data.shape || this.currentShape);
+    const keyword = data.keyword || TARGET_KEYWORDS[Math.floor(Math.random() * TARGET_KEYWORDS.length)];
+    const points = data.points || ((keyword === '정보' || keyword === '통신') ? 2 : 1);
+
+    const cfg = this.difficultyConfigs[this.currentDifficulty];
+    const { group, subMeshesToRotate } = this.createTargetMesh(data.shape || this.currentShape, points);
+
+    // 표적 상단에 텍스트 뱃지 스프라이트 부착
+    const labelSprite = this.createTargetLabelSprite(keyword, points, cfg.scale);
+    group.add(labelSprite);
+
     const basePos = new THREE.Vector3(...data.basePos);
     group.position.copy(basePos);
 
@@ -1036,6 +1127,8 @@ export class ShootingArenaEngine {
       id: data.id,
       mesh: group,
       shape: data.shape || this.currentShape,
+      keyword,
+      points,
       basePos,
       velocity: new THREE.Vector3(...data.velocity),
       frequency: data.frequency,
@@ -1044,6 +1137,7 @@ export class ShootingArenaEngine {
       isHit: false,
       hitProgress: 0,
       subMeshesToRotate,
+      labelSprite,
     };
 
     this.targetsGroup.add(group);
@@ -1136,14 +1230,16 @@ export class ShootingArenaEngine {
           myStats.maxCombo = myStats.combo;
         }
 
-        const cfg = this.difficultyConfigs[this.currentDifficulty];
-        const addedScore = Math.round(100 * cfg.scoreMultiplier * (1 + (myStats.combo - 1) * 0.2));
+        const addedScore = targetObj.points; // 정보/통신: 2점, 나머지: 1점
         myStats.score += addedScore;
 
         this.soundManager.playHit();
-        this.createExplosion(hitPoint, playerColor);
+        const hitColor = targetObj.points === 2 ? 0xffe600 : playerColor;
+        this.createExplosion(hitPoint, hitColor);
 
-        if (myStats.combo >= 5 && myStats.combo % 5 === 0) {
+        if (targetObj.points === 2) {
+          this.voiceManager.speak('COMBO_STREAK');
+        } else if (myStats.combo >= 5 && myStats.combo % 5 === 0) {
           this.voiceManager.speak('COMBO_STREAK');
         }
 
@@ -1524,7 +1620,7 @@ export class ShootingArenaEngine {
               this.createExplosion(hitPoint, aiColor);
               this.soundManager.playHit();
 
-              const addedScore = this.cyberAI.recordHit();
+              const addedScore = this.cyberAI.recordHit(targetObj.points);
               this.p2Stats.score = this.cyberAI.stats.score;
               this.p2Stats.hits = this.cyberAI.stats.hits;
               this.p2Stats.combo = this.cyberAI.stats.combo;

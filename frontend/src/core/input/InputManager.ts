@@ -5,7 +5,7 @@ export type InputMode = 'HYBRID' | 'STANDALONE' | 'WEBSOCKET_ONLY';
 export class InputManager {
   private static instance: InputManager;
   private ws: WebSocket | null = null;
-  private serverHost: string = 'localhost';
+  private serverHost: string = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
   private serverPort: string = '8000';
   private requestedRole?: ClientRole;
 
@@ -63,6 +63,9 @@ export class InputManager {
 
   private constructor() {
     if (typeof window !== 'undefined') {
+      if (window.location.hostname) {
+        this.serverHost = window.location.hostname;
+      }
       this.initKeyboardMouseListeners();
     }
   }

@@ -86,6 +86,8 @@ export interface PlayerPose {
   blasterQuat: [number, number, number, number];
 }
 
+export type TargetKeyword = '정보' | '통신' | '제어' | '회로' | '인공' | '전자';
+
 export interface TargetSpawnPacket {
   id: string;
   shape: TargetShape;
@@ -93,6 +95,8 @@ export interface TargetSpawnPacket {
   velocity: [number, number, number];
   frequency: number;
   amplitude: number;
+  keyword?: TargetKeyword;
+  points?: number;
 }
 
 export interface VersusMatchStats {

@@ -215,16 +215,14 @@ export class CyberAIRival {
   }
 
   /** 실제 3D 레이캐스트가 표적에 명중했을 때 호출 */
-  public recordHit(): number {
+  public recordHit(basePoints: number = 1): number {
     this.stats.hits += 1;
     this.stats.combo += 1;
     if (this.stats.combo > this.stats.maxCombo) {
       this.stats.maxCombo = this.stats.combo;
     }
 
-    // AI 점수 배율 (하: 1.0x, 중: 1.0x, 상: 1.3x) - 과도한 AI 점수 팽창 방지
-    const multMap = { easy: 1.0, normal: 1.0, hard: 1.3 };
-    const addedScore = Math.round(100 * multMap[this.difficulty] * (1 + (this.stats.combo - 1) * 0.15));
+    const addedScore = basePoints;
     this.stats.score += addedScore;
 
     this.currentTarget = null;

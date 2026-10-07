@@ -52,7 +52,13 @@ export default function ShootingArenaPage() {
     game_clients_count: 0,
     spectator_count: 0,
   });
-  const [serverHost, setServerHost] = useState<string>('localhost');
+  const [serverHost, setServerHost] = useState<string>(() => {
+    if (typeof window !== 'undefined' && window.location.hostname) {
+      return window.location.hostname;
+    }
+    return 'localhost';
+  });
+  const [isP2Connected, setIsP2Connected] = useState<boolean>(false);
   const [sensitivity, setSensitivity] = useState<number>(1.0);
   const [isVRSupported, setIsVRSupported] = useState<boolean>(false);
 
@@ -172,11 +178,19 @@ export default function ShootingArenaPage() {
     inputMgr.onStatusChange = (status, wsConnected) => {
       setSystemStatus(status);
       setIsWsConnected(wsConnected);
+      setIsP2Connected(inputMgr.isP2Connected);
     };
 
     inputMgr.onClientAssigned = (role) => {
       setClientRole(role);
       engine.clientRole = role;
+      setIsP2Connected(inputMgr.isP2Connected);
+    };
+
+    const origRoomStateChange = inputMgr.onRoomStateChange;
+    inputMgr.onRoomStateChange = (state) => {
+      if (origRoomStateChange) origRoomStateChange(state);
+      setIsP2Connected(Boolean(state.p2Connected));
     };
 
     // URL 쿼리에 ?mode=observer 또는 ?role=spectator가 있는 경우 자동 관람 모드
@@ -404,6 +418,8 @@ export default function ShootingArenaPage() {
         onSelectDifficulty={handleSelectDifficulty}
         highScore={highScore}
         clientRole={clientRole}
+        versusMode={versusStats.mode}
+        isP2Connected={isP2Connected}
       />
 
       {/* 4. 사격장 설정 모달 */}

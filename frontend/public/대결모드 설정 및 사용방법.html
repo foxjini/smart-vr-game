@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>프로젝트 전시회 1:1 대결 모드 & 관람 중계 공식 운영 매뉴얼</title>
+  <meta name="description" content="서버 PC 1대, Quest 2 2대, 관람 모니터 1대를 활용한 1:1 실시간 PvP 사격 대결 및 e-스포츠 방송 관람 공식 운영 가이드">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700;800;900&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --bg-surface: #0c1017;
+      --bg-card: rgba(15, 20, 32, 0.85);
+      --bg-card-hover: rgba(22, 30, 48, 0.95);
+      --border-color: rgba(0, 240, 255, 0.22);
+      --border-accent: rgba(255, 0, 85, 0.3);
+      --cyan: #00f0ff;
+      --cyan-glow: rgba(0, 240, 255, 0.35);
+      --magenta: #ff0055;
+      --magenta-glow: rgba(255, 0, 85, 0.35);
+      --yellow: #ffe600;
+      --yellow-glow: rgba(255, 230, 0, 0.3);
+      --green: #10b981;
+      --purple: #a855f7;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --font-sans: 'Outfit', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', Consolas, Monaco, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 10% 10%, rgba(0, 240, 255, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 90% 90%, rgba(255, 0, 85, 0.08) 0%, transparent 45%),
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.65;
+      overflow-x: hidden;
+      padding-bottom: 5rem;
+    }
+
+    /* 상단 네비게이션 헤더 */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(7, 9, 14, 0.92);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.9rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      text-decoration: none;
+    }
+
+    .brand-icon {
+      font-size: 1.8rem;
+      filter: drop-shadow(0 0 10px var(--cyan-glow));
+    }
+
+    .brand-title {
+      font-weight: 900;
+      font-size: 1.25rem;
+      letter-spacing: 0.06em;
+      background: linear-gradient(135deg, #ffffff 25%, var(--cyan) 85%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: block;
+      line-height: 1.2;
+    }
+
+    .brand-subtitle {
+      font-size: 0.72rem;
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      letter-spacing: 0.12em;
+    }
+
+    .header-badges {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      border: 1px solid;
+    }
+
+    .badge-cyan {
+      background: rgba(0, 240, 255, 0.1);
+      border-color: rgba(0, 240, 255, 0.4);
+      color: var(--cyan);
+    }
+
+    .badge-magenta {
+      background: rgba(255, 0, 85, 0.1);
+      border-color: rgba(255, 0, 85, 0.4);
+      color: var(--magenta);
+    }
+
+    .badge-yellow {
+      background: rgba(255, 230, 0, 0.1);
+      border-color: rgba(255, 230, 0, 0.4);
+      color: var(--yellow);
+    }
+
+    .badge-green {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.5);
+      color: var(--green);
+    }
+
+    /* 동적 IP 설정 바 */
+    .ip-sync-bar {
+      background: rgba(12, 16, 23, 0.95);
+      border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+      padding: 0.75rem 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .ip-input-group {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .ip-input-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .ip-input {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      font-size: 0.92rem;
+      font-weight: 700;
+      padding: 0.35rem 0.75rem;
+      border-radius: 4px;
+      width: 170px;
+      outline: none;
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+      transition: all 0.2s;
+    }
+
+    .ip-input:focus {
+      border-color: #fff;
+      box-shadow: 0 0 16px var(--cyan);
+    }
+
+    .ip-desc {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    /* 메인 컨테이너 */
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem;
+    }
+
+    /* 히어로 섹션 */
+    .hero {
+      text-align: center;
+      margin-bottom: 3.5rem;
+      padding: 3rem 1.5rem;
+      background: radial-gradient(circle at 50% 30%, rgba(0, 240, 255, 0.12) 0%, transparent 70%);
+      border: 1px solid rgba(0, 240, 255, 0.18);
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cyan), var(--magenta), transparent);
+    }
+
+    .hero-tag {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--cyan);
+      letter-spacing: 0.2em;
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+    }
+
+    .hero-title {
+      font-size: 2.5rem;
+      font-weight: 900;
+      line-height: 1.25;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #ffffff 30%, var(--cyan) 75%, var(--magenta) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 840px;
+      margin: 0 auto 1.75rem auto;
+      line-height: 1.7;
+    }
+
+    .hero-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+      text-align: left;
+    }
+
+    .summary-card {
+      background: rgba(12, 16, 23, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      border-left: 3px solid var(--cyan);
+    }
+
+    .summary-card.magenta {
+      border-left-color: var(--magenta);
+    }
+
+    .summary-card.yellow {
+      border-left-color: var(--yellow);
+    }
+
+    .summary-card.green {
+      border-left-color: var(--green);
+    }
+
+    .summary-card-title {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-bottom: 0.25rem;
+    }
+
+    .summary-card-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* 섹션 공통 스타일 */
+    section {
+      margin-bottom: 4rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .section-num {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 900;
+      color: var(--cyan);
+      background: rgba(0, 240, 255, 0.1);
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 240, 255, 0.3);
+    }
+
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-top: -1rem;
+      margin-bottom: 1.75rem;
+    }
+
+    /* 카드 및 그리드 레이아웃 */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: all 0.25s ease;
+      position: relative;
+    }
+
+    .card:hover {
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .card.highlight-cyan {
+      border-color: rgba(0, 240, 255, 0.4);
+      box-shadow: 0 0 25px rgba(0, 240, 255, 0.08);
+    }
+
+    .card.highlight-magenta {
+      border-color: rgba(255, 0, 85, 0.4);
+      box-shadow: 0 0 25px rgba(255, 0, 85, 0.08);
+    }
+
+    .card.highlight-yellow {
+      border-color: rgba(255, 230, 0, 0.4);
+      box-shadow: 0 0 25px rgba(255, 230, 0, 0.08);
+    }
+
+    .card-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 0.2rem 0.55rem;
+      border-radius: 3px;
+      margin-bottom: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    .card h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.75rem;
+    }
+
+    .card p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.65;
+      margin-bottom: 1rem;
+    }
+
+    /* 토폴로지 다이어그램 박스 */
+    .topology-box {
+      background: #04060a;
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      border-radius: 10px;
+      padding: 1.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      color: #94a3b8;
+      line-height: 1.8;
+      overflow-x: auto;
+      margin-bottom: 1.75rem;
+      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.8);
+    }
+
+    .topology-box .c-cyan { color: var(--cyan); font-weight: 700; }
+    .topology-box .c-mag { color: var(--magenta); font-weight: 700; }
+    .topology-box .c-yel { color: var(--yellow); font-weight: 700; }
+    .topology-box .c-grn { color: var(--green); font-weight: 700; }
+    .topology-box .c-dim { color: var(--text-dim); }
+
+    /* 단계별 프로세스 스텝 */
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 1.5rem;
+      background: var(--bg-card);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 1.5rem;
+      align-items: flex-start;
+      transition: border-color 0.2s;
+    }
+
+    .step-item:hover {
+      border-color: var(--cyan);
+    }
+
+    .step-number {
+      font-family: var(--font-mono);
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: var(--cyan);
+      background: rgba(0, 240, 255, 0.12);
+      border: 1px solid rgba(0, 240, 255, 0.35);
+      border-radius: 8px;
+      min-width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-content h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.4rem;
+    }
+
+    .step-content p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+      margin-bottom: 0.75rem;
+    }
+
+    /* 코드 및 명령어 박스 */
+    .code-box {
+      background: #04060a;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      margin: 0.75rem 0;
+      overflow: hidden;
+    }
+
+    .code-header {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 0.4rem 0.85rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .code-box pre {
+      padding: 0.85rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      color: #38bdf8;
+      overflow-x: auto;
+      line-height: 1.6;
+    }
+
+    .copy-btn {
+      background: rgba(0, 240, 255, 0.12);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: var(--cyan);
+      color: #000;
+    }
+
+    /* 콜아웃 알림 박스 */
+    .callout {
+      border-radius: 8px;
+      padding: 1.1rem 1.35rem;
+      margin: 1.2rem 0;
+      border-left: 4px solid;
+      font-size: 0.92rem;
+      line-height: 1.65;
+    }
+
+    .callout-cyan {
+      background: rgba(0, 240, 255, 0.06);
+      border-left-color: var(--cyan);
+      color: #cffafe;
+    }
+
+    .callout-magenta {
+      background: rgba(255, 0, 85, 0.06);
+      border-left-color: var(--magenta);
+      color: #ffe4e6;
+    }
+
+    .callout-yellow {
+      background: rgba(255, 230, 0, 0.06);
+      border-left-color: var(--yellow);
+      color: #fef9c3;
+    }
+
+    .callout-green {
+      background: rgba(16, 185, 129, 0.08);
+      border-left-color: var(--green);
+      color: #d1fae5;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    /* 키보드 배지 */
+    .key-badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      padding: 0.15rem 0.45rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+    }
+
+    /* 인라인 코드 */
+    code {
+      font-family: var(--font-mono);
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+      font-size: 0.88em;
+      color: #38bdf8;
+    }
+
+    /* 토스트 알림 */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #00f0ff;
+      color: #000;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 0.85rem;
+      padding: 0.75rem 1.4rem;
+      border-radius: 6px;
+      box-shadow: 0 8px 30px rgba(0, 240, 255, 0.5);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 999;
+      pointer-events: none;
+    }
+
+    #toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* 반응형 */
+    @media (max-width: 768px) {
+      .hero-title { font-size: 1.85rem; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .ip-sync-bar { flex-direction: column; align-items: flex-start; }
+      .step-item { flex-direction: column; gap: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================================================================= -->
+  <!-- 1. 헤더 -->
+  <!-- ================================================================= -->
+  <header>
+    <a href="#" class="brand">
+      <span class="brand-icon">⚔️</span>
+      <div>
+        <span class="brand-title">인천전자마이스터고 정보통신과</span>
+        <span class="brand-subtitle">사이버 스트라이크 : 1:1 VR 미래 사격 배틀</span>
+      </div>
+    </a>
+    <div class="header-badges">
+      <span class="badge badge-yellow">🏫 인천전자마이스터고</span>
+      <span class="badge badge-cyan">P1 CYAN</span>
+      <span class="badge badge-magenta">P2 MAGENTA</span>
+      <span class="badge badge-yellow">SPECTATOR</span>
+    </div>
+  </header>
+
+  <!-- ================================================================= -->
+  <!-- 2. 동적 IP 설정 툴바 (학생 편의 기능) -->
+  <!-- ================================================================= -->
+  <div class="ip-sync-bar">
+    <div class="ip-input-group">
+      <span class="ip-input-label">📡 서버 PC IPv4 주소 입력:</span>
+      <input type="text" id="ipInput" class="ip-input" value="192.168.0.50" placeholder="예: 192.168.0.50" oninput="updateDynamicIP(this.value)">
+    </div>
+    <div class="ip-desc">
+      💡 위 입력창에 본인 PC의 IP를 적으면, <b>문서 전체의 접속 주소와 chrome://flags 명령어가 실시간으로 자동 변경</b>됩니다!
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- ================================================================= -->
+    <!-- 3. 히어로 요약 섹션 -->
+    <!-- ================================================================= -->
+    <div class="hero">
+      <div class="hero-tag">// 인천전자마이스터고등학교 정보통신과 프로젝트 전시회 //</div>
+      <h1 class="hero-title">사이버 스트라이크 : 1:1 VR 미래 사격 배틀<br>부스 시연 & 관람 중계 공식 운영 매뉴얼</h1>
+      <p class="hero-desc">
+        서버 PC 1대, Quest 2 2대, 관람 모니터 1대를 구성하여<br>
+        <b>중학생 관람객들이 Quest 2로 신나는 1:1 실시간 레이저 사격 줄다리기 배틀</b>을 즐기고, 
+        <b>부스 모니터에서 4대 전문 방송 카메라로 e-스포츠 중계를 시청</b>하는 완벽 가이드입니다.
+      </p>
+
+      <div class="hero-summary-grid">
+        <div class="summary-card">
+          <div class="summary-card-title">선수 1 (Quest 2 #1)</div>
+          <div class="summary-card-value" style="color:var(--cyan)">P1 CYAN (시안 테마)</div>
+        </div>
+        <div class="summary-card magenta">
+          <div class="summary-card-title">선수 2 (Quest 2 #2)</div>
+          <div class="summary-card-value" style="color:var(--magenta)">P2 MAGENTA (자홍 테마)</div>
+        </div>
+        <div class="summary-card yellow">
+          <div class="summary-card-title">부스 관람 모니터</div>
+          <div class="summary-card-value" style="color:var(--yellow)">OBSERVER (4단 중계 카메라)</div>
+        </div>
+        <div class="summary-card green">
+          <div class="summary-card-title">실시간 점수 판정</div>
+          <div class="summary-card-value" style="color:var(--green)">TUG-OF-WAR (줄다리기 HUD)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 4. 시스템 네트워크 토폴로지 구성도 -->
+    <!-- ================================================================= -->
+    <section id="topology">
+      <div class="section-header">
+        <span class="section-num">01</span>
+        <h2 class="section-title">하드웨어 및 네트워크 구성도</h2>
+      </div>
+      <p class="section-desc">전시회 부스 내 모든 기기는 반드시 <b>동일한 무선 공유기(5GHz Wi-Fi)</b>에 연결되어 있어야 합니다.</p>
+
+      <div class="topology-box">
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 <span class="c-yel">[5GHz 무선 공유기 (동일 Wi-Fi 서브넷)]</span>                                   │
+└─────────────────────────────────┬────────────────────────────────┬───────────────────────────────┘
+                                  │                                │
+                                  ▼                                ▼
+       ┌──────────────────────────────────────────────┐ ┌──────────────────────────────────────────────┐
+       │             <span class="c-cyan">[서버 PC (1대) + 모니터]</span>          │ │             <span class="c-mag">[VR 헤드셋 플레이어 (2대)]</span>       │
+       │                                              │ │                                              │
+       │ • FastAPI WebSocket 서버 (포트 8000)          │ │ • <span class="c-cyan">Quest 2 #1 (선수 1)</span>                        │
+       │ • Next.js 3D 웹 게임 서버 (포트 3000)        │ │   ➔ http://<span class="dynamic-ip">192.168.0.50</span>:3000 접속         │
+       │ • <span class="c-yel">모니터 관람 중계 모드 실행 (F11 전체화면)</span>    │ │   ➔ <span class="c-cyan">P1 (Cyan) 자동 배정 & 6DoF 사격</span>        │
+       │   ➔ http://localhost:3000/?role=spectator    │ │                                              │
+       │   ➔ 4대 카메라(단축키 1~4) e-스포츠 중계 송출 │ │ • <span class="c-mag">Quest 2 #2 (선수 2)</span>                        │
+       │   ➔ 현장 오디오 BGM 및 한국어 보이스 브리핑  │ │   ➔ http://<span class="dynamic-ip">192.168.0.50</span>:3000 접속         │
+       │                                              │ │   ➔ <span class="c-mag">P2 (Magenta) 자동 배정 ➔ 1:1 PvP 성립!</span> │
+       └──────────────────────────────────────────────┘ └──────────────────────────────────────────────┘
+      </div>
+
+      <div class="callout callout-cyan">
+        <div class="callout-title">💡 왜 컴퓨터와 대결로만 되었나요? (핵심 원리)</div>
+        본 게임은 별도의 "방 만들기" 로비가 없으며, <b>서버에 2명의 플레이어(P1, P2)가 모두 연결되는 순간 자동으로 1:1 실시간 PvP 모드로 전환</b>됩니다.<br>
+        지금까지 혼자서 브라우저 창 1개만 켜고 시작했기 때문에, 2P 자리에 자동으로 <b>Cyber AI 봇(컴퓨터)</b>이 출전했던 것입니다. <b>두 대의 Quest 2가 차례대로 접속하면 자동으로 진정한 1:1 PvP 대결이 시작</b>됩니다!
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- 5. 사전 1회 필수 설정 (전시회 전날 완료) -->
+    <!-- ================================================================= -->
+    <section id="presetup">
+      <div class="section-header">
+        <span class="section-num">02</span>
+        <h2 class="section-title">사전 1회 필수 설정 (전시회 전 준비)</h2>
+      </div>
+      <p class="section-desc">전시회 시작 전 개발 PC와 Quest 2 두 대에 미리 1회만 설정해 두면 당일 즉시 구동됩니다.</p>
+
+      <div class="step-list">
+        <!-- 2-1 PC 방화벽 -->
+        <div class="step-item">
+          <div class="step-number">STEP 1</div>
+          <div class="step-content">
+            <h3>서버 PC Windows 방화벽 포트(3000, 8000) 허용</h3>
+            <p>Quest 2 헤드셋이 PC의 웹 게임과 WebSocket 중계 서버로 접속할 수 있도록 포트를 개방합니다.</p>
+            <p><b>방법:</b> Windows 시작 메뉴에서 <code>PowerShell</code> 검색 ➔ <b>[관리자 권한으로 실행]</b> 후 아래 명령어 실행:</p>
+            <div class="code-box">
+              <div class="code-header">
+                <span>PowerShell (관리자 권한)</span>
+                <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+              </div>
+              <pre><code>New-NetFirewallRule -DisplayName "VR Game Web (3000)" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "VR Game Relay (8000)" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2-2 Quest 2 chrome://flags -->
+        <div class="step-item">
+          <div class="step-number">STEP 2</div>
+          <div class="step-content">
+            <h3>Quest 2 #1 & #2 WebXR 보안 정책 해제 (★매우 중요★)</h3>
+            <p>
+              Meta Quest 브라우저는 W3C 보안 규정상 <code>http://192.168.x.x</code>와 같은 사설 IP 접속 시 WebXR(VR 세션) 진입을 기본 차단합니다.<br>
+              아래 절차를 <b>Quest 2 헤드셋 두 대 모두 각각 1회씩</b> 진행해주세요.
+            </p>
+
+            <ol style="margin-left: 1.25rem; color: var(--text-muted); line-height: 1.8; font-size: 0.92rem;">
+              <li>Quest 2 착용 ➔ 기본 탑재된 <b>[Meta Quest 브라우저]</b> 실행</li>
+              <li>주소창에 <code>chrome://flags</code> 입력 후 이동</li>
+              <li>상단 검색창에 <code>insecure</code> 검색 ➔ <b>Insecure origins treated as secure</b> 항목 찾기</li>
+              <li>입력창에 아래 주소를 등록:
+                <div class="code-box" style="margin: 0.5rem 0;">
+                  <div class="code-header">
+                    <span>Insecure Origins 등록 문자열</span>
+                    <button class="copy-btn" onclick="copyDynamicFlags(this)">COPY</button>
+                  </div>
+                  <pre><code id="dynamicFlagsCode">http://192.168.0.50:3000,http://192.168.0.50:8000</code></pre>
+                </div>
+              </li>
+              <li>우측 드롭다운 메뉴를 <b>[Disabled] ➔ [Enabled]</b> 로 변경</li>
+              <li>화면 우측 하단에 뜨는 파란색 <b>[Relaunch]</b> 버튼을 눌러 브라우저 재시작</li>
+            </ol>
+            <div class="callout callout-green" style="margin-top: 0.75rem;">
+              ✓ 이 설정을 1회 해두면 별도의 복잡한 사설 SSL(HTTPS) 인증서 설치 없이 360도 Immersive-VR 사격장에 100% 정상 진입합니다!
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- 6. 전시회 당일 현장 부스 가동 절차 -->
+    <!-- ================================================================= -->
+    <section id="runtime">
+      <div class="section-header">
+        <span class="section-num">03</span>
+        <h2 class="section-title">전시회 당일 서버 가동 절차</h2>
+      </div>
+      <p class="section-desc">부스 오픈 시 서버 PC에서 터미널 창 2개를 열어 서버를 가동합니다.</p>
+
+      <div class="grid-2">
+        <div class="card highlight-cyan">
+          <span class="card-badge badge-cyan">TERMINAL 1 // BACKEND</span>
+          <h3>1. FastAPI 중계 서버 가동 (포트 8000)</h3>
+          <p>6DoF 아바타 포즈(20Hz), 레이저 사격 및 타겟 폭발 동기화를 중계합니다.</p>
+          <div class="code-box">
+            <div class="code-header">
+              <span>서버 PC CMD / PowerShell</span>
+              <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+            </div>
+            <pre><code>cd d:\work\iot-3d-shooting\server
+python run.py</code></pre>
+          </div>
+          <span style="font-size:0.8rem; color:var(--cyan)">✓ Uvicorn running on http://0.0.0.0:8000 메시지 확인</span>
+        </div>
+
+        <div class="card highlight-magenta">
+          <span class="card-badge badge-magenta">TERMINAL 2 // FRONTEND</span>
+          <h3>2. Next.js 웹 게임 서버 가동 (포트 3000)</h3>
+          <p>3D 사격장 렌더링 엔진과 관람 중계 UI를 호스팅합니다.</p>
+          <div class="code-box">
+            <div class="code-header">
+              <span>서버 PC CMD / PowerShell</span>
+              <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+            </div>
+            <pre><code>cd d:\work\iot-3d-shooting\frontend
+npm run dev</code></pre>
+          </div>
+          <span style="font-size:0.8rem; color:var(--magenta)">✓ Ready in http://localhost:3000 메시지 확인</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- 7. 기기별 접속 순서 (슬롯 꼬임 방지 핵심 가이드) -->
+    <!-- ================================================================= -->
+    <section id="connection-order">
+      <div class="section-header">
+        <span class="section-num">04</span>
+        <h2 class="section-title">기기별 접속 순서 (★슬롯 꼬임 방지★)</h2>
+      </div>
+      <p class="section-desc">플레이어 슬롯(1P, 2P)과 관람객(Spectator) 역할을 완벽히 구분하기 위해 반드시 <b>아래 순서대로 접속</b>하세요.</p>
+
+      <div class="step-list">
+        <!-- 1순위: PC 관람화면 -->
+        <div class="step-item" style="border-left: 4px solid var(--yellow);">
+          <div class="step-number" style="color:var(--yellow); border-color:var(--yellow); background:rgba(255,230,0,0.1)">1순위</div>
+          <div class="step-content">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>[서버 PC 모니터] 관람 중계 화면 먼저 열기</h3>
+              <span class="badge badge-yellow">SPECTATOR</span>
+            </div>
+            <p>
+              서버 PC의 브라우저(크롬 또는 엣지)에서 아래 주소로 접속한 후, <b>키보드 <kbd class="key-badge">F11</kbd></b>을 눌러 <b>전체화면</b>으로 만듭니다:
+            </p>
+            <div class="code-box">
+              <div class="code-header">
+                <span>서버 PC 브라우저 주소창</span>
+                <button class="copy-btn" onclick="copyCode(this)">COPY</button>
+              </div>
+              <pre><code>http://localhost:3000/?role=spectator</code></pre>
+            </div>
+            <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:0;">
+              📌 <b>이유:</b> 주소 뒤에 <code>?role=spectator</code>가 붙어있어 <b>선수 슬롯(1P, 2P)을 차지하지 않고 순수 관람객으로 고정</b>됩니다.<br>
+              🔊 <b>음향:</b> PC 스피커 볼륨을 켜두어 BGM, 타격음, 한국어 오퍼레이터 음성이 부스 전체에 박진감 있게 울리도록 합니다.
+            </p>
+          </div>
+        </div>
+
+        <!-- 2순위: Quest 2 #1 -->
+        <div class="step-item" style="border-left: 4px solid var(--cyan);">
+          <div class="step-number" style="color:var(--cyan); border-color:var(--cyan); background:rgba(0,240,255,0.1)">2순위</div>
+          <div class="step-content">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>[Quest 2 #1] 첫 번째 선수 착용 및 접속</h3>
+              <span class="badge badge-cyan">PLAYER 1 (CYAN)</span>
+            </div>
+            <p>
+              첫 번째 Quest 2의 [Meta Quest 브라우저]에서 서버 PC IP로 접속합니다:
+            </p>
+            <div class="code-box">
+              <div class="code-header">
+                <span>Quest 2 #1 브라우저 주소창</span>
+                <button class="copy-btn" onclick="copyDynamicUrl(this)">COPY</button>
+              </div>
+              <pre><code class="dynamic-url">http://192.168.0.50:3000</code></pre>
+            </div>
+            <ul style="margin-left: 1.25rem; font-size: 0.9rem; color: var(--text-muted); line-height: 1.7;">
+              <li>서버에서 첫 번째 참가자로 인식하여 <b><code>P1 (Cyan, 청록색 아바타)</code></b> 자동 배정</li>
+              <li>화면 중앙의 <b>[🥽 Quest 2 VR 배틀 출격]</b> 버튼을 터치하여 사격장 진입</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 3순위: Quest 2 #2 -->
+        <div class="step-item" style="border-left: 4px solid var(--magenta);">
+          <div class="step-number" style="color:var(--magenta); border-color:var(--magenta); background:rgba(255,0,85,0.1)">3순위</div>
+          <div class="step-content">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>[Quest 2 #2] 두 번째 선수 착용 및 접속 (1:1 PvP 즉시 성립!)</h3>
+              <span class="badge badge-magenta">PLAYER 2 (MAGENTA)</span>
+            </div>
+            <p>
+              두 번째 Quest 2의 [Meta Quest 브라우저]에서 동일한 주소로 접속합니다:
+            </p>
+            <div class="code-box">
+              <div class="code-header">
+                <span>Quest 2 #2 브라우저 주소창</span>
+                <button class="copy-btn" onclick="copyDynamicUrl(this)">COPY</button>
+              </div>
+              <pre><code class="dynamic-url">http://192.168.0.50:3000</code></pre>
+            </div>
+            <ul style="margin-left: 1.25rem; font-size: 0.9rem; color: var(--text-muted); line-height: 1.7;">
+              <li>서버에서 두 번째 참가자로 인식하여 <b><code>P2 (Magenta, 자홍색 아바타)</code></b> 자동 배정</li>
+              <li><b>1P와 2P가 모두 온라인이 되면서 시스템 전체가 <code>[🟢 1:1 실시간 PvP 대결 모드]</code> 로 자동 전환!</b></li>
+              <li>화면 중앙의 <b>[🥽 Quest 2 VR 배틀 출격]</b> 버튼을 터치하여 사격장 진입</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- 8. 경기 진행 및 관람 카메라 중계 연출 -->
+    <!-- ================================================================= -->
+    <section id="gameplay">
+      <div class="section-header">
+        <span class="section-num">05</span>
+        <h2 class="section-title">경기 진행 및 4단 방송 중계 연출</h2>
+      </div>
+      <p class="section-desc">실시간 1:1 대결의 핵심 플레이 요소와 관람석 모니터의 카메라 전환 조작법입니다.</p>
+
+      <div class="grid-2">
+        <!-- 대결 인게임 요소 -->
+        <div class="card highlight-cyan">
+          <span class="card-badge badge-cyan">IN-GAME RULES</span>
+          <h3>🥊 1:1 실시간 선착순 점수 쟁탈전</h3>
+          <ul style="margin-left:1.2rem; color:var(--text-muted); font-size:0.92rem; line-height:1.75">
+            <li><b>경기 시간:</b> 두 선수 중 아무나 컨트롤러 <b>방아쇠(트리거)</b>를 당기면 60초 카운트다운과 함께 동시 스타트!</li>
+            <li><b>🎯 표적 6대 키워드 & 차등 배점 (핵심!):</b><br>
+              &nbsp;&nbsp;• <b style="color:var(--yellow)">★ 2점 표적 (보너스):</b> <code>정보</code>, <code>통신</code> (정보통신과 핵심전공 표적, 황금빛 발광)<br>
+              &nbsp;&nbsp;• <b style="color:#cbd5e1">● 1점 표적 (기본):</b> <code>제어</code>, <code>회로</code>, <code>인공</code>, <code>전자</code> (기초전공 표적)
+            </li>
+            <li><b>동일 타겟 선착순 격파:</b> 같은 표적을 먼저 맞춘 선수만 점수를 얻으며, 즉시 폭발 파티클과 함께 소멸되어 중복 타격이 방지됩니다.</li>
+            <li><b>6DoF 모션 아바타:</b> 상대방 헬멧 시선 회전, 블래스터 총구 방향, 발사 시 화염(Muzzle Flash)이 가상 공간에 실시간(20Hz) 표시됩니다.</li>
+            <li><b>재장전:</b> 탄약 10발 소진 시 컨트롤러 <b>그립 버튼</b>을 쥐어 에너지 셀을 재장전합니다.</li>
+            <li><b>승패 브리핑:</b> 60초 종료 시 승자에게 <b>"VICTORY"</b>, 패자에게 <b>"DEFEAT"</b> 한국어 오퍼레이터 음성이 출력됩니다.</li>
+          </ul>
+        </div>
+
+        <!-- 관람 카메라 조작 -->
+        <div class="card highlight-yellow">
+          <span class="card-badge badge-yellow">BROADCAST CONTROLS</span>
+          <h3>🎥 PC 키보드 4대 전문 중계 카메라 전환</h3>
+          <p>부스 운영자는 <b>서버 PC 키보드의 숫자키 1~4</b>를 눌러 관람 화면을 자유자재로 연출할 수 있습니다:</p>
+          <div style="display:flex; flex-direction:column; gap:0.6rem; font-size:0.9rem;">
+            <div style="background:rgba(0,0,0,0.5); padding:0.6rem 0.8rem; border-radius:6px; display:flex; align-items:center; gap:0.75rem;">
+              <span class="key-badge">1</span>
+              <div>
+                <b style="color:var(--cyan)">스타디움 풀샷 (Stadium)</b>
+                <div style="font-size:0.8rem; color:var(--text-dim)">경기장 전체, 양 선수 아바타, 비행 표적을 한눈에 담는 마스터 뷰</div>
+              </div>
+            </div>
+            <div style="background:rgba(0,0,0,0.5); padding:0.6rem 0.8rem; border-radius:6px; display:flex; align-items:center; gap:0.75rem;">
+              <span class="key-badge">2</span>
+              <div>
+                <b style="color:var(--cyan)">1P 숄더뷰 (P1 View)</b>
+                <div style="font-size:0.8rem; color:var(--text-dim)">1번 선수(Cyan)의 어깨 뒤에서 6DoF 조준선과 격발을 3인칭 추적</div>
+              </div>
+            </div>
+            <div style="background:rgba(0,0,0,0.5); padding:0.6rem 0.8rem; border-radius:6px; display:flex; align-items:center; gap:0.75rem;">
+              <span class="key-badge">3</span>
+              <div>
+                <b style="color:var(--magenta)">2P 숄더뷰 (P2 View)</b>
+                <div style="font-size:0.8rem; color:var(--text-dim)">2번 선수(Magenta)의 근접 조준 시점을 역동적으로 추적</div>
+              </div>
+            </div>
+            <div style="background:rgba(0,0,0,0.5); padding:0.6rem 0.8rem; border-radius:6px; display:flex; align-items:center; gap:0.75rem;">
+              <span class="key-badge">4</span>
+              <div>
+                <b style="color:var(--yellow)">시네마틱 궤도캠 (Orbit)</b>
+                <div style="font-size:0.8rem; color:var(--text-dim)">경기장 중심을 360도로 부드럽게 공전하는 방송용 시네마틱 앵글</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- 9. 전시회 현장 부스 운영 & 트러블슈팅 꿀팁 -->
+    <!-- ================================================================= -->
+    <section id="tips">
+      <div class="section-header">
+        <span class="section-num">06</span>
+        <h2 class="section-title">전시회 부스 운영 꿀팁 & 트러블슈팅</h2>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <h3>🔄 다음 관람객 연속 라운드 진행법</h3>
+          <p>
+            경기가 끝나면 <b>브라우저를 새로고침할 필요가 없습니다!</b><br>
+            다음 학생이 헤드셋을 착용한 뒤, <b>컨트롤러 방아쇠(트리거)를 다시 당기거나 PC에서 사격 시작</b>을 누르면 스코어가 0:0으로 리셋되며 즉시 새 라운드가 시작됩니다.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>⚡ 헤드셋 화면 꺼짐(Sleep) 대처법</h3>
+          <p>
+            학생들이 헤드셋을 벗어두어 대기 모드에 들어간 경우, 다시 착용했을 때 WebSocket이 재연결됩니다.<br>
+            만약 연결이 끊겼다면 브라우저 상단 <b>[새로고침(F5)]</b>을 한 번 누르고 <b>[VR 배틀 출격]</b>을 누르면 즉시 복구됩니다.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>📡 Wi-Fi IP가 변경되었을 때</h3>
+          <p>
+            전시회장 현장 공유기에 연결하면서 PC IP가 변경된 경우, CMD에서 <code>ipconfig</code>로 새 IP를 확인한 후 Quest 2 주소창에 새 IP로 접속하세요.<br>
+            (사전 설정했던 flags 설정은 IP 대역이 크게 바뀌지 않는 한 유지됩니다.)
+          </p>
+        </div>
+      </div>
+
+      <div class="callout callout-yellow" style="margin-top: 1.5rem;">
+        <div class="callout-title">📢 전시 부스 이목을 끄는 연출 팁!</div>
+        1. PC 모니터는 관람객들의 시선이 가장 잘 닿는 전면에 배치하고 <b>F11 전체화면</b>을 유지하세요.<br>
+        2. PC 스피커 사운드를 켜두면 게임 시작 음성(<i>"배틀 프로토콜 가동, 카운트다운 시작!"</i>)과 줄다리기 리드 안내음(<i>"1P 300점 리드 상태입니다!"</i>)이 울려 지나가는 관람객들의 발길을 사로잡습니다!
+      </div>
+    </section>
+
+  </div>
+
+  <!-- 토스트 알림 컴포넌트 -->
+  <div id="toast">주소가 복사되었습니다!</div>
+
+  <script>
+    function updateDynamicIP(val) {
+      const cleanIp = val.trim() || '192.168.0.50';
+      
+      // 1. IP 텍스트 치환
+      document.querySelectorAll('.dynamic-ip').forEach(el => {
+        el.textContent = cleanIp;
+      });
+
+      // 2. URL 텍스트 치환
+      document.querySelectorAll('.dynamic-url').forEach(el => {
+        el.textContent = `http://${cleanIp}:3000`;
+      });
+
+      // 3. flags 코드 치환
+      const flagsCode = document.getElementById('dynamicFlagsCode');
+      if (flagsCode) {
+        flagsCode.textContent = `http://${cleanIp}:3000,http://${cleanIp}:8000`;
+      }
+    }
+
+    function showToast(msg = '복사되었습니다!') {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2000);
+    }
+
+    function copyCode(btn) {
+      const codeBox = btn.closest('.code-box');
+      if (!codeBox) return;
+      const code = codeBox.querySelector('code');
+      if (!code) return;
+      navigator.clipboard.writeText(code.innerText.trim()).then(() => {
+        showToast('명령어가 클립보드에 복사되었습니다!');
+      });
+    }
+
+    function copyDynamicUrl(btn) {
+      const ip = document.getElementById('ipInput').value.trim() || '192.168.0.50';
+      navigator.clipboard.writeText(`http://${ip}:3000`).then(() => {
+        showToast(`Quest 2 접속 주소(http://${ip}:3000)가 복사되었습니다!`);
+      });
+    }
+
+    function copyDynamicFlags(btn) {
+      const ip = document.getElementById('ipInput').value.trim() || '192.168.0.50';
+      const text = `http://${ip}:3000,http://${ip}:8000`;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('chrome://flags 등록 주소가 복사되었습니다!');
+      });
+    }
+
+    // 초기 IP 반영
+    window.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('ipInput');
+      if (input) updateDynamicIP(input.value);
+    });
+  </script>
+</body>
+</html>

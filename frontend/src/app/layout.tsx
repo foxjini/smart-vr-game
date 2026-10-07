@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Cyber Strike VR Arena | WebXR 1:1 Cyber Shooting Game",
-  description: "Meta Quest 2 WebXR 6DoF 1:1 Versus Cyber Shooting Arena & AI Rival Battle",
+  title: "사이버 스트라이크 : 1:1 VR 미래 사격 배틀 | 인천전자마이스터고 정보통신과",
+  description: "인천전자마이스터고등학교 정보통신과 프로젝트 작품전시회 - 친구와 함께 즐기는 Meta Quest 2 1:1 실시간 레이저 사격 배틀 e-스포츠",
 };
 
 export default function RootLayout({
