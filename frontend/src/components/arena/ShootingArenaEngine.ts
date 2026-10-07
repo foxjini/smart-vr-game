@@ -13,6 +13,7 @@ import {
   VersusMatchStats,
   TargetSpawnPacket,
   TargetKeyword,
+  MatchInfo,
 } from '@/types';
 import { SoundManager } from '@/core/audio/SoundManager';
 import { VoiceManager } from '@/core/audio/VoiceManager';
@@ -22,6 +23,19 @@ import { CyberAIRival, TargetObjectRef } from '@/core/ai/CyberAIRival';
 import { SpectatorCameraController } from '@/core/spectator/SpectatorCameraController';
 
 export const TARGET_KEYWORDS: TargetKeyword[] = ['정보', '통신', '제어', '회로', '인공', '전자'];
+
+/** 경기 시간(초) */
+const MATCH_DURATION = 60;
+/** 플레이어 슬롯별 월드 X 위치 (두 플레이어가 같은 원점에 겹치지 않도록 좌우로 배치) */
+const SLOT_OFFSET_X = 0.75;
+/** 서버에 경기 시작을 요청한 뒤 응답이 없을 때 로컬 경기로 대체하기까지 기다리는 시간(ms) */
+const START_REQUEST_TIMEOUT_MS = 1500;
+/** 로컬 타이머가 끝난 뒤 서버의 종료 판정을 기다리는 최대 시간(초) */
+const SERVER_END_GRACE = 2.0;
+/** 호스트의 표적이 이 시간(초) 동안 오지 않고 화면에 표적이 없으면 다른 플레이어가 대신 생성 */
+const HOST_SILENCE_BEFORE_BACKUP = 3.0;
+
+type PlayerSlot = 1 | 2;
 
 export interface TargetObject extends TargetObjectRef {
   id: string;
@@ -131,10 +145,22 @@ export class ShootingArenaEngine {
   // 콜백
   public onStatsUpdate?: (stats: GameStats) => void;
   public onVersusStatsUpdate?: (stats: VersusMatchStats) => void;
-  public onGameOver?: (finalStats: GameStats) => void;
+  public onGameOver?: (finalStats: GameStats, result: { winner: string; aborted: boolean }) => void;
   public onGameStarted?: () => void;
+  public onPauseChange?: (paused: boolean) => void;
+  /** 서버 경기의 난이도가 로컬 설정과 달라 동기화했을 때 */
+  public onDifficultySync?: (difficulty: Difficulty) => void;
+
+  // 서버 경기 상태 (null = 오프라인·관람 데모·서버 무응답 대체 등 로컬 경기)
+  private matchId: number | null = null;
+  private lastEndedMatchId: number | null = null;
+  private pendingStartTimer: ReturnType<typeof setTimeout> | null = null;
+  private matchEndWaitTimer: number = 0;
+  private timeSinceRemoteSpawn: number = 0;
 
   // 3D 오브젝트들
+  /** 내 카메라·VR 컨트롤러·안내판을 담는 리그 (슬롯 위치로 이동) */
+  private playerRig: THREE.Group;
   private themeGroup: THREE.Group;
   private targetsGroup: THREE.Group;
   private p1Blaster!: BlasterRig;
@@ -204,6 +230,11 @@ export class ShootingArenaEngine {
     this.camera.position.set(0, 1.6, 0);
     this.spectatorCam = new SpectatorCameraController(this.camera);
 
+    // WebXR 카메라와 컨트롤러는 리그 기준으로 추적되므로, 리그를 옮기면 플레이어 위치가 바뀜
+    this.playerRig = new THREE.Group();
+    this.playerRig.add(this.camera);
+    this.scene.add(this.playerRig);
+
     // 2. 렌더러 설정 (WebXR 활성화)
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setSize(container.clientWidth, container.clientHeight);
@@ -217,7 +248,7 @@ export class ShootingArenaEngine {
     });
     this.renderer.xr.addEventListener('sessionend', () => {
       if (this.isPlaying) {
-        this.stopGame();
+        this.abortGame('플레이어 VR 세션 종료');
       }
     });
 
@@ -237,6 +268,7 @@ export class ShootingArenaEngine {
     this.buildVRPrompt();
     this.initVRControllers();
     this.initNetworkListeners();
+    this.applyRoleLayout();
 
     // 5. 입력 바인딩
     this.inputManager.onFireCallback = () => this.handleFire();
@@ -280,50 +312,33 @@ export class ShootingArenaEngine {
   // 네트워크 동기화 리스너 등록
   // ==========================================
   private initNetworkListeners() {
-    this.inputManager.onClientAssigned = (role, _playerId) => {
-      this.clientRole = role;
-      if (role === 'SPECTATOR') {
-        this.p1Head.visible = true;
-        this.p2Head.visible = true;
-      } else if (role === 'P1') {
-        this.p1Head.visible = false;
-        this.p2Head.visible = true;
-        this.attachLocalBlasterToActiveController();
-      } else if (role === 'P2') {
-        this.p2Head.visible = false;
-        this.p1Head.visible = true;
-        this.attachLocalBlasterToActiveController();
-      }
+    this.inputManager.onClientAssigned = (role) => {
+      this.setRole(role);
     };
 
-    this.inputManager.onRoomStateChange = (_state) => {
-      if (this.onVersusStatsUpdate) {
-        this.notifyVersusStats();
-      }
+    this.inputManager.onRoomStateChange = () => {
+      this.notifyVersusStats();
     };
 
     this.inputManager.onRemotePose = (pose: PlayerPose) => {
-      if (pose.playerId === 1 && this.clientRole !== 'P1') {
-        this.p1Head.position.set(...pose.headPos);
-        this.p1Head.quaternion.set(...pose.headQuat);
-        this.p1Blaster.group.position.set(...pose.blasterPos);
-        this.p1Blaster.group.quaternion.set(...pose.blasterQuat);
-        if (this.p1Blaster.recoilOffset > 0) {
-          this.p1Blaster.group.rotateX(-this.p1Blaster.recoilOffset);
-        }
-      } else if (pose.playerId === 2 && this.clientRole !== 'P2') {
-        this.p2Head.position.set(...pose.headPos);
-        this.p2Head.quaternion.set(...pose.headQuat);
-        this.p2Blaster.group.position.set(...pose.blasterPos);
-        this.p2Blaster.group.quaternion.set(...pose.blasterQuat);
-        if (this.p2Blaster.recoilOffset > 0) {
-          this.p2Blaster.group.rotateX(-this.p2Blaster.recoilOffset);
-        }
+      const slot: PlayerSlot = pose.playerId === 2 ? 2 : 1;
+      if (slot === this.localSlot) return;
+      // 로컬 AI가 조종 중인 슬롯은 원격 포즈로 덮어쓰지 않음
+      if (this.isPlaying && this.ownsAIRival() && slot === this.aiSlot) return;
+      const head = slot === 1 ? this.p1Head : this.p2Head;
+      const blaster = slot === 1 ? this.p1Blaster : this.p2Blaster;
+      head.position.set(...pose.headPos);
+      head.quaternion.set(...pose.headQuat);
+      blaster.group.position.set(...pose.blasterPos);
+      blaster.group.quaternion.set(...pose.blasterQuat);
+      if (blaster.recoilOffset > 0) {
+        blaster.group.rotateX(-blaster.recoilOffset);
       }
     };
 
     this.inputManager.onRemoteFire = (data) => {
-      const shooter = data.playerId;
+      const shooter: PlayerSlot = data.playerId === 2 ? 2 : 1;
+      if (shooter === this.localSlot) return;
       const blaster = shooter === 1 ? this.p1Blaster : this.p2Blaster;
       blaster.muzzleFlash.intensity = 15;
       blaster.muzzleTimer = 0.08;
@@ -337,46 +352,83 @@ export class ShootingArenaEngine {
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(muzzleQuat).normalize();
       const color = shooter === 1 ? 0x00f0ff : 0xff0055;
       this.spawnLaserBolt(muzzlePos, forward, color, 55);
+
+      // 상대 선수의 발사 수를 세어 명중률 계산 (결과 비교 카드용)
+      if (this.isPlaying && this.matchId !== null) {
+        this.recordShot(shooter);
+      }
     };
 
     this.inputManager.onRemoteTargetSpawn = (data) => {
-      if (this.clientRole !== 'P1') {
-        this.spawnTargetFromPacket(data);
-      }
+      // 현재 서버 경기의 표적만 받음 (호스트 표적, 또는 호스트가 멈췄을 때 다른 플레이어의 대체 표적)
+      if (!this.isPlaying || this.matchId === null) return;
+      if (data.matchId !== undefined && data.matchId !== this.matchId) return;
+      this.timeSinceRemoteSpawn = 0;
+      this.spawnTargetFromPacket(data);
     };
 
     this.inputManager.onTargetHitConfirmed = (data) => {
+      if (!this.isPlaying || this.matchId === null || data.matchId !== this.matchId) return;
+      const slot: PlayerSlot = data.hitBy === 2 ? 2 : 1;
       const targetObj = this.activeTargets.find((t) => t.id === data.targetId);
       if (targetObj && !targetObj.isHit) {
         targetObj.isHit = true;
-        const color = data.hitBy === 1 ? 0x00f0ff : 0xff0055;
-        const hitPos = new THREE.Vector3(...data.hitPoint);
-        this.createExplosion(hitPos, color);
+        const color = slot === 1 ? 0x00f0ff : 0xff0055;
+        this.createExplosion(new THREE.Vector3(...data.hitPoint), color);
         this.soundManager.playHit();
       }
+
+      // 내 사격과 내가 돌리는 AI는 로컬 콤보를 이어가고, 원격 선수는 서버가 전달한 콤보를 사용
+      const simulatedHere = slot === this.localSlot || (this.ownsAIRival() && slot === this.aiSlot);
+      this.recordHit(slot, data.addedScore, simulatedHere ? undefined : data.combo);
       this.stats.score = data.p1Score;
       this.p2Stats.score = data.p2Score;
+      if (slot === this.localSlot) {
+        this.announceLocalHit(slot, data.addedScore);
+      }
       this.notifyStats();
       this.notifyVersusStats();
     };
 
-    this.inputManager.onMatchStarted = (duration) => {
-      if (!this.isPlaying) {
-        this.roundTimer = duration;
-        this.startGameLocal();
+    this.inputManager.onMatchStarted = (info) => {
+      if (this.isPlaying && this.matchId === info.matchId) {
+        this.syncMatchClock(info);
+        return;
+      }
+      // 대기 중이거나 로컬 경기(관람 데모 등) 중이면 서버 경기로 전환
+      this.startGameLocal(info);
+    };
+
+    this.inputManager.onMatchState = (info) => {
+      if (info.isMatchActive) {
+        if (this.isPlaying && this.matchId === info.matchId) {
+          this.syncMatchClock(info);
+        } else if (info.matchId !== this.lastEndedMatchId) {
+          // 진행 중인 경기에 도중 합류 (재접속, 나중에 켠 관람 화면 등)
+          this.startGameLocal(info);
+        }
+      } else if (this.isPlaying && this.matchId === info.matchId) {
+        // 종료 방송을 놓친 경우 서버 집계로 마무리
+        this.finishWithScores(info.p1Score, info.p2Score);
       }
     };
 
     this.inputManager.onMatchOverBroadcast = (data) => {
-      this.stats.score = data.p1Score;
-      this.p2Stats.score = data.p2Score;
-      this.stopGameLocal(data.winner);
+      if (!this.isPlaying || this.matchId === null || data.matchId !== this.matchId) return;
+      this.finishWithScores(data.p1Score, data.p2Score, data.winner);
     };
 
-    this.inputManager.onMatchAborted = (_msg) => {
-      if (this.isPlaying) {
-        this.stopGameLocal('ABORT');
-      }
+    this.inputManager.onMatchAborted = (data) => {
+      if (!this.isPlaying || this.matchId === null || data.matchId !== this.matchId) return;
+      this.stopGameLocal('ABORT');
+    };
+
+    this.inputManager.onMatchPaused = (data) => {
+      if (this.isPlaying && data.matchId === this.matchId) this.setPausedLocal(true, data.remaining);
+    };
+
+    this.inputManager.onMatchResumed = (data) => {
+      if (this.isPlaying && data.matchId === this.matchId) this.setPausedLocal(false, data.remaining);
     };
   }
 
@@ -426,17 +478,63 @@ export class ShootingArenaEngine {
     this.controller0.addEventListener('squeezestart', onReload);
     this.controller1.addEventListener('squeezestart', onReload);
 
-    this.scene.add(this.controller0);
-    this.scene.add(this.controller1);
+    this.playerRig.add(this.controller0);
+    this.playerRig.add(this.controller1);
   }
 
   private getLocalBlaster(): BlasterRig {
     return this.clientRole === 'P2' ? this.p2Blaster : this.p1Blaster;
   }
 
-  private attachLocalBlasterToActiveController() {
-    if (this.activeController) {
-      this.attachBlasterToController(this.activeController);
+  /** 내 플레이어 슬롯 (관람자는 null) */
+  private get localSlot(): PlayerSlot | null {
+    return this.clientRole === 'P1' ? 1 : this.clientRole === 'P2' ? 2 : null;
+  }
+
+  /** 로컬 AI 라이벌이 맡는 슬롯 (2P로 접속하면 1P 자리, 그 외에는 2P 자리) */
+  private get aiSlot(): PlayerSlot {
+    return this.clientRole === 'P2' ? 1 : 2;
+  }
+
+  private statsFor(slot: PlayerSlot): GameStats {
+    return slot === 1 ? this.stats : this.p2Stats;
+  }
+
+  /** 역할에 맞춰 리그(내 위치)·헬멧·블래스터를 배치 */
+  private applyRoleLayout() {
+    const local = this.localSlot;
+    this.playerRig.position.set(local === 1 ? -SLOT_OFFSET_X : local === 2 ? SLOT_OFFSET_X : 0, 0, 0);
+    if (local !== null) {
+      // 관람 카메라가 옮겨 둔 시점을 플레이어 1인칭 시점으로 되돌림
+      this.camera.position.set(0, 1.6, 0);
+      this.camera.rotation.set(0, 0, 0);
+    }
+
+    ([1, 2] as PlayerSlot[]).forEach((slot) => {
+      const head = slot === 1 ? this.p1Head : this.p2Head;
+      const blaster = slot === 1 ? this.p1Blaster : this.p2Blaster;
+      if (slot === local) {
+        head.visible = false;
+        return;
+      }
+      // 상대(원격 선수 또는 AI) 장비는 월드 기준 슬롯 기본 위치에 둠 (원격 포즈가 오면 덮어씀)
+      const slotX = slot === 1 ? -SLOT_OFFSET_X : SLOT_OFFSET_X;
+      head.visible = true;
+      head.position.set(slotX, 1.6, 0);
+      head.rotation.set(0, 0, 0);
+      if (blaster.group.parent !== this.scene) {
+        this.scene.add(blaster.group);
+      }
+      blaster.group.position.set(slotX + (slot === 1 ? -0.35 : 0.35), 1.35, -0.45);
+      blaster.group.rotation.set(0, 0, 0);
+    });
+
+    if (local !== null) {
+      if (this.activeController) {
+        this.attachBlasterToController(this.activeController);
+      } else {
+        this.resetLocalBlasterToDefault();
+      }
     }
   }
 
@@ -457,9 +555,10 @@ export class ShootingArenaEngine {
   }
 
   private resetLocalBlasterToDefault() {
+    if (this.clientRole === 'SPECTATOR') return;
     const blaster = this.getLocalBlaster();
-    if (blaster.group.parent !== this.scene) {
-      this.scene.add(blaster.group);
+    if (blaster.group.parent !== this.playerRig) {
+      this.playerRig.add(blaster.group);
     }
     const defaultX = this.clientRole === 'P2' ? 0.35 : -0.35;
     blaster.group.position.set(defaultX, 1.35, -0.45);
@@ -644,7 +743,7 @@ export class ShootingArenaEngine {
     this.vrPromptMesh = new THREE.Mesh(geo, mat);
     this.vrPromptMesh.position.set(0, 1.6, -2.5);
     this.vrPromptMesh.visible = false; // 메뉴 UI와의 중복 겹침 방지 (게임 종료 시 결과판으로만 활성화)
-    this.scene.add(this.vrPromptMesh);
+    this.playerRig.add(this.vrPromptMesh); // 내 정면에 보이도록 리그 기준으로 배치
   }
 
   private drawPromptContent(
@@ -658,7 +757,9 @@ export class ShootingArenaEngine {
 
     if (isGameOver) {
       // 1. 라운드 종료 1:1 대결 결과판
+      // roundRect는 현재 경로에 누적되므로 도형마다 beginPath()로 새 경로를 시작
       ctx.fillStyle = 'rgba(7, 10, 20, 0.94)';
+      ctx.beginPath();
       ctx.roundRect(10, 10, w - 20, h - 20, 28);
       ctx.fill();
       ctx.strokeStyle = '#00f0ff';
@@ -686,6 +787,7 @@ export class ShootingArenaEngine {
 
       // 좌측 P1 스탯 박스
       ctx.fillStyle = 'rgba(0, 240, 255, 0.12)';
+      ctx.beginPath();
       ctx.roundRect(40, 160, 440, 380, 20);
       ctx.fill();
       ctx.strokeStyle = '#00f0ff';
@@ -707,6 +809,7 @@ export class ShootingArenaEngine {
 
       // 우측 P2 스탯 박스
       ctx.fillStyle = 'rgba(255, 0, 85, 0.12)';
+      ctx.beginPath();
       ctx.roundRect(540, 160, 440, 380, 4);
       ctx.fill();
       ctx.strokeStyle = 'rgba(255, 0, 85, 0.5)';
@@ -795,16 +898,15 @@ export class ShootingArenaEngine {
 
   /** 듀얼 OLED 디스플레이 업데이트 */
   private updateBlasterDisplays() {
-    this.renderOLED(this.p1Blaster, this.stats, this.p2Stats, '1P (CYAN)', 1);
-    this.renderOLED(this.p2Blaster, this.p2Stats, this.stats, '2P (MAGENTA)', 2);
+    this.renderOLED(this.p1Blaster, this.stats, this.p2Stats, 1);
+    this.renderOLED(this.p2Blaster, this.p2Stats, this.stats, 2);
   }
 
   private renderOLED(
     rig: BlasterRig,
     myStats: GameStats,
     rivalStats: GameStats,
-    _title: string,
-    _playerId: number
+    playerId: PlayerSlot
   ) {
     const ctx = rig.displayCtx;
     const canvas = rig.displayCanvas;
@@ -813,7 +915,9 @@ export class ShootingArenaEngine {
     const isWarning = this.isPlaying && this.roundTimer <= 10;
     const borderColor = isWarning ? '#ff0055' : rig.primaryColor === 0x00f0ff ? '#00f0ff' : '#ff0055';
 
+    // beginPath() 없이 roundRect()를 부르면 호출마다 경로가 쌓여 그리기가 점점 느려짐
     ctx.fillStyle = isWarning ? 'rgba(40, 5, 15, 0.85)' : 'rgba(4, 8, 18, 0.82)';
+    ctx.beginPath();
     ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, 4);
     ctx.fill();
 
@@ -830,6 +934,13 @@ export class ShootingArenaEngine {
       ctx.fillStyle = '#ffe600';
       ctx.font = 'bold 22px monospace';
       ctx.fillText('KEEP HOLDING TO QUIT', canvas.width / 2, 185);
+    } else if (this.isPlaying && this.isPaused) {
+      ctx.fillStyle = '#ffe600';
+      ctx.font = '900 44px monospace';
+      ctx.fillText('PAUSED', canvas.width / 2, 105);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = 'bold 32px monospace';
+      ctx.fillText(`TIME: ${String(this.stats.timeRemaining).padStart(2, '0')}s`, canvas.width / 2, 185);
     } else if (myStats.isReloading) {
       ctx.fillStyle = '#ffaa00';
       ctx.font = '900 40px monospace';
@@ -841,7 +952,7 @@ export class ShootingArenaEngine {
       // 상단: 내 점수 vs 상대방 점수
       ctx.fillStyle = borderColor;
       ctx.font = 'bold 38px monospace';
-      ctx.fillText(`P1: ${myStats.score.toLocaleString()}`, canvas.width * 0.32, 90);
+      ctx.fillText(`P${playerId}: ${myStats.score.toLocaleString()}`, canvas.width * 0.32, 90);
 
       ctx.fillStyle = '#ffaa00';
       ctx.font = 'bold 38px monospace';
@@ -1149,17 +1260,20 @@ export class ShootingArenaEngine {
     this.targetsGroup.add(group);
     this.activeTargets.push(targetObj);
 
-    // 원격 및 관람객 클라이언트에 키워드와 점수를 포함하여 스폰 브로드캐스트
-    this.inputManager.sendTargetSpawn({
-      id,
-      shape: this.currentShape,
-      basePos: [x, y, z],
-      velocity: [vx, vy, 0],
-      frequency,
-      amplitude,
-      keyword,
-      points,
-    });
+    // 서버 경기면 다른 선수·관람 화면에 키워드와 점수를 포함해 스폰 정보를 보냄 (로컬 경기는 공유하지 않음)
+    if (this.matchId !== null) {
+      this.inputManager.sendTargetSpawn({
+        id,
+        shape: this.currentShape,
+        basePos: [x, y, z],
+        velocity: [vx, vy, 0],
+        frequency,
+        amplitude,
+        keyword,
+        points,
+        matchId: this.matchId,
+      });
+    }
   }
 
   private spawnTargetFromPacket(data: TargetSpawnPacket) {
@@ -1236,14 +1350,16 @@ export class ShootingArenaEngine {
       this.startGame();
       return;
     }
-    if (this.isPaused) return;
+    // 일시정지 중이거나 시간이 끝나 서버 판정을 기다리는 동안은 사격 불가
+    if (this.isPaused || this.roundTimer <= 0) return;
 
     const now = performance.now();
     if (now - this.lastFireTime < 120) return;
     this.lastFireTime = now;
 
+    const slot = this.localSlot as PlayerSlot;
     const localBlaster = this.getLocalBlaster();
-    const myStats = this.clientRole === 'P2' ? this.p2Stats : this.stats;
+    const myStats = this.statsFor(slot);
 
     if (myStats.isReloading) return;
     if (myStats.ammo <= 0) {
@@ -1253,15 +1369,14 @@ export class ShootingArenaEngine {
     }
 
     myStats.ammo -= 1;
-    myStats.shotsFired += 1;
+    this.recordShot(slot);
     this.soundManager.playFire();
 
     localBlaster.muzzleFlash.intensity = 15;
     localBlaster.muzzleTimer = 0.08;
     localBlaster.recoilOffset = 0.05;
 
-    const playerId = this.clientRole === 'P2' ? 2 : 1;
-    this.inputManager.sendFireEvent(playerId);
+    this.inputManager.sendFireEvent(slot);
 
     const muzzleWorldPos = new THREE.Vector3();
     const muzzleWorldQuat = new THREE.Quaternion();
@@ -1269,11 +1384,38 @@ export class ShootingArenaEngine {
     localBlaster.group.getWorldQuaternion(muzzleWorldQuat);
     const muzzleForward = new THREE.Vector3(0, 0, -1).applyQuaternion(muzzleWorldQuat).normalize();
 
-    this.raycaster.set(muzzleWorldPos, muzzleForward);
+    const playerColor = slot === 1 ? 0x00f0ff : 0xff0055;
+    const hit = this.raycastTargets(muzzleWorldPos, muzzleForward);
+
+    if (hit) {
+      // 발사 즉시 시각적 3D 레이저 볼트 발사 (표적까지의 궤적 형성)
+      this.spawnLaserBolt(muzzleWorldPos, muzzleForward, playerColor, hit.distance);
+
+      // 폭발·효과음은 바로 보여주고, 점수와 명중 기록은 서버 확정(서버 경기) 또는 즉시(로컬 경기) 반영
+      hit.target.isHit = true;
+      this.soundManager.playHit();
+      const hitColor = hit.target.points === 2 ? 0xffe600 : playerColor;
+      this.createExplosion(hit.point, hitColor);
+      this.applyHitResult(slot, hit.target, hit.point);
+    } else {
+      // 빗맞힌 사격: 전방 55m 깊은 공간으로 레이저 볼트 비행
+      this.spawnLaserBolt(muzzleWorldPos, muzzleForward, playerColor, 55);
+      this.recordMiss(slot);
+    }
+
+    this.notifyStats();
+    this.notifyVersusStats();
+  }
+
+  /** 총구 광선과 처음 만나는 (아직 맞지 않은) 표적 */
+  private raycastTargets(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3
+  ): { target: TargetObject; point: THREE.Vector3; distance: number } | null {
+    this.raycaster.set(origin, direction);
 
     const targetMeshes: THREE.Object3D[] = [];
     const targetMap = new Map<THREE.Object3D, TargetObject>();
-
     this.activeTargets.forEach((t) => {
       if (!t.isHit) {
         t.mesh.traverse((child) => {
@@ -1286,61 +1428,28 @@ export class ShootingArenaEngine {
     });
 
     const intersects = this.raycaster.intersectObjects(targetMeshes, false);
-    const playerColor = playerId === 1 ? 0x00f0ff : 0xff0055;
+    if (intersects.length === 0) return null;
+    const target = targetMap.get(intersects[0].object);
+    if (!target) return null;
+    return { target, point: intersects[0].point, distance: intersects[0].distance };
+  }
 
-    if (intersects.length > 0) {
-      const hitPoint = intersects[0].point;
-      const hitDistance = intersects[0].distance;
-      const hitMesh = intersects[0].object;
-      const targetObj = targetMap.get(hitMesh);
-
-      // 발사 즉시 시각적 3D 레이저 볼트 발사 (표적까지의 궤적 형성)
-      this.spawnLaserBolt(muzzleWorldPos, muzzleForward, playerColor, hitDistance);
-
-      if (targetObj && !targetObj.isHit) {
-        targetObj.isHit = true;
-        myStats.hits += 1;
-        myStats.combo += 1;
-        if (myStats.combo > myStats.maxCombo) {
-          myStats.maxCombo = myStats.combo;
-        }
-
-        const addedScore = targetObj.points; // 정보/통신: 2점, 나머지: 1점
-        myStats.score += addedScore;
-
-        this.soundManager.playHit();
-        const hitColor = targetObj.points === 2 ? 0xffe600 : playerColor;
-        this.createExplosion(hitPoint, hitColor);
-
-        if (targetObj.points === 2) {
-          this.voiceManager.speak('COMBO_STREAK');
-        } else if (myStats.combo >= 5 && myStats.combo % 5 === 0) {
-          this.voiceManager.speak('COMBO_STREAK');
-        }
-
-        // 서버에 피격 이벤트 전송 (동기화)
-        this.inputManager.sendHitRequest(
-          targetObj.id,
-          playerId,
-          [hitPoint.x, hitPoint.y, hitPoint.z],
-          addedScore,
-          myStats.combo
-        );
-      }
-    } else {
-      // 빗맞힌 사격: 전방 55m 깊은 공간으로 레이저 볼트 비행
-      this.spawnLaserBolt(muzzleWorldPos, muzzleForward, playerColor, 55);
-      myStats.misses += 1;
-      myStats.combo = 0;
+  /** 명중 반영: 서버 경기는 서버 확정을 요청하고, 로컬 경기(또는 전송 실패)는 바로 기록 */
+  private applyHitResult(slot: PlayerSlot, target: TargetObject, hitPoint: THREE.Vector3) {
+    if (this.matchId !== null) {
+      const sent = this.inputManager.sendHitRequest(
+        target.id,
+        slot,
+        [hitPoint.x, hitPoint.y, hitPoint.z],
+        this.statsFor(slot).combo + 1,
+        this.matchId
+      );
+      if (sent) return;
     }
-
-    myStats.accuracy =
-      myStats.shotsFired > 0
-        ? Math.round((myStats.hits / myStats.shotsFired) * 100)
-        : 100;
-
-    this.notifyStats();
-    this.notifyVersusStats();
+    this.recordHit(slot, target.points);
+    if (slot === this.localSlot) {
+      this.announceLocalHit(slot, target.points);
+    }
   }
 
   public handleReload() {
@@ -1439,29 +1548,44 @@ export class ShootingArenaEngine {
     });
   }
 
-  /** 로컬 클라이언트에서 표적을 자체 스폰해야 하는지 판정 (PC 단독, 호스트, 단독 관람) */
-  public canSpawnTargetsLocally(): boolean {
-    if (!this.isPlaying || this.isPaused) return false;
-    // 1. 서버 미연결 (오프라인 / 단독 PC 모드)
-    if (!this.inputManager.isConnectedToServer) return true;
-    // 2. AI 대전 모드 (인간 2인 대전이 아닌 모든 경우 로컬 표적 생성 필수)
-    if (this.inputManager.versusMode !== 'VERSUS_PVP') return true;
-    // 3. 내가 1P 호스트인 경우
+  /** 이 클라이언트가 표적 생성 권한을 가졌는지 (서버 경기: 1P 우선, 1P가 없으면 2P / 로컬 경기: 항상) */
+  private isSpawnHost(): boolean {
+    if (this.matchId === null) return true;
     if (this.clientRole === 'P1') return true;
-    // 4. 내가 2P인데 1P 인간 플레이어가 부재한 경우
-    if (this.clientRole === 'P2' && !this.inputManager.isP1Connected) return true;
-    // 5. 안전 폴백: 표적이 0개면 무조건 스폰
-    if (this.activeTargets.length === 0) return true;
+    return this.clientRole === 'P2' && !this.inputManager.isP1Connected;
+  }
+
+  /** 이 클라이언트가 AI 라이벌을 직접 구동하는지 (로컬 경기, 또는 상대 슬롯이 빈 서버 경기의 플레이어) */
+  private ownsAIRival(): boolean {
+    if (this.matchId === null) return true;
+    if (this.clientRole === 'P1') return !this.inputManager.isP2Connected;
+    if (this.clientRole === 'P2') return !this.inputManager.isP1Connected;
     return false;
+  }
+
+  private isClockRunning(): boolean {
+    return this.isPlaying && !this.isPaused && this.roundTimer > 0;
+  }
+
+  /** 로컬 클라이언트에서 표적을 자체 스폰해야 하는지 판정 (호스트만 생성 → 모든 화면이 같은 표적 공유) */
+  public canSpawnTargetsLocally(): boolean {
+    return this.isClockRunning() && this.isSpawnHost();
+  }
+
+  /** 호스트 화면이 멈춰(헤드셋 절전 등) 표적이 오지 않을 때 다른 플레이어가 대신 생성 (모든 화면에 공유됨) */
+  private shouldSpawnAsBackup(): boolean {
+    return (
+      this.isClockRunning() &&
+      this.matchId !== null &&
+      this.localSlot !== null &&
+      this.activeTargets.length === 0 &&
+      this.timeSinceRemoteSpawn >= HOST_SILENCE_BEFORE_BACKUP
+    );
   }
 
   /** 로컬 클라이언트에서 AI Rival 연산을 구동해야 하는지 판정 */
   public shouldRunAILocally(): boolean {
-    if (!this.isPlaying || this.isPaused) return false;
-    if (this.clientRole === 'P1' && !this.inputManager.isP2Connected) return true;
-    if (this.clientRole === 'P2' && !this.inputManager.isP1Connected) return true;
-    if (this.clientRole === 'SPECTATOR' && !this.inputManager.isP1Connected && !this.inputManager.isP2Connected) return true;
-    return false;
+    return this.isClockRunning() && this.ownsAIRival();
   }
 
   // ==========================================
@@ -1492,87 +1616,173 @@ export class ShootingArenaEngine {
     }
   }
 
-  public startGame() {
-    this.inputManager.sendMatchStart(60);
-    this.startGameLocal();
+  private updateAccuracy(s: GameStats) {
+    s.accuracy = s.shotsFired > 0 ? Math.min(100, Math.round((s.hits / s.shotsFired) * 100)) : 100;
   }
 
-  private startGameLocal() {
+  private recordShot(slot: PlayerSlot) {
+    const s = this.statsFor(slot);
+    s.shotsFired += 1;
+    this.updateAccuracy(s);
+  }
+
+  private recordMiss(slot: PlayerSlot) {
+    const s = this.statsFor(slot);
+    s.misses += 1;
+    s.combo = 0;
+    this.updateAccuracy(s);
+  }
+
+  /** 명중 기록 (combo를 주면 그 값을 사용: 원격 선수는 서버가 전달한 콤보) */
+  private recordHit(slot: PlayerSlot, points: number, combo?: number) {
+    const s = this.statsFor(slot);
+    s.hits += 1;
+    s.combo = combo ?? s.combo + 1;
+    s.maxCombo = Math.max(s.maxCombo, s.combo);
+    s.score += points;
+    this.updateAccuracy(s);
+  }
+
+  private announceLocalHit(slot: PlayerSlot, points: number) {
+    const combo = this.statsFor(slot).combo;
+    if (points === 2 || (combo >= 5 && combo % 5 === 0)) {
+      this.voiceManager.speak('COMBO_STREAK');
+    }
+  }
+
+  private freshStats(): GameStats {
+    return {
+      score: 0,
+      hits: 0,
+      misses: 0,
+      shotsFired: 0,
+      accuracy: 100,
+      combo: 0,
+      maxCombo: 0,
+      timeRemaining: MATCH_DURATION,
+      ammo: 10,
+      maxAmmo: 10,
+      isReloading: false,
+    };
+  }
+
+  /** 서버 경기로 진행할지: 서버에 연결돼 있고, 플레이어이거나 (관람 운영자는) 접속한 플레이어가 있을 때 */
+  private shouldUseServerMatch(): boolean {
+    const im = this.inputManager;
+    if (!im.isConnectedToServer) return false;
+    if (this.clientRole !== 'SPECTATOR') return true;
+    return im.isP1Connected || im.isP2Connected;
+  }
+
+  /** 경기 시작 요청 (방아쇠, 시작 버튼, VR 진입). 서버 경기면 서버의 시작 신호에 맞춰 모두 함께 시작 */
+  public startGame() {
+    if (this.isPlaying || this.pendingStartTimer) return;
+    if (this.shouldUseServerMatch() && this.inputManager.sendMatchStart(MATCH_DURATION, this.currentDifficulty)) {
+      // 서버 응답이 없으면 로컬 경기로 대체
+      this.pendingStartTimer = setTimeout(() => {
+        this.pendingStartTimer = null;
+        if (!this.isPlaying) this.startGameLocal(null);
+      }, START_REQUEST_TIMEOUT_MS);
+      return;
+    }
+    this.startGameLocal(null);
+  }
+
+  /** 관람 화면 대기용 AI 시연 (서버 경기에 영향 없음, 실제 경기가 시작되면 자동 전환) */
+  public startLocalDemo() {
+    if (this.isPlaying || this.pendingStartTimer) return;
+    this.startGameLocal(null);
+  }
+
+  /** 경기 시작 (info가 있으면 서버 경기의 남은 시간·난이도·점수에 맞춰 합류) */
+  private startGameLocal(info: MatchInfo | null) {
+    if (this.pendingStartTimer) {
+      clearTimeout(this.pendingStartTimer);
+      this.pendingStartTimer = null;
+    }
+    this.matchId = info ? info.matchId : null;
+    if (info?.difficulty && info.difficulty !== this.currentDifficulty) {
+      this.setDifficulty(info.difficulty);
+      if (this.onDifficultySync) this.onDifficultySync(info.difficulty);
+    }
+
     this.isPlaying = true;
-    this.isPaused = false;
-    this.roundTimer = 60;
+    this.isPaused = Boolean(info?.isPaused);
+    this.roundTimer = info ? info.remaining : MATCH_DURATION;
+    this.matchEndWaitTimer = 0;
+    this.timeSinceRemoteSpawn = 0;
+    this.lastReportedSecond = -1;
     this.hasWarned10s = false;
     if (this.vrPromptMesh) {
       this.vrPromptMesh.visible = false;
-      this.vrPromptMesh.position.set(0, -999, 0);
     }
-    this.stats = {
-      score: 0,
-      hits: 0,
-      misses: 0,
-      shotsFired: 0,
-      accuracy: 100,
-      combo: 0,
-      maxCombo: 0,
-      timeRemaining: 60,
-      ammo: 10,
-      maxAmmo: 10,
-      isReloading: false,
-    };
-    this.p2Stats = {
-      score: 0,
-      hits: 0,
-      misses: 0,
-      shotsFired: 0,
-      accuracy: 100,
-      combo: 0,
-      maxCombo: 0,
-      timeRemaining: 60,
-      ammo: 10,
-      maxAmmo: 10,
-      isReloading: false,
-    };
+    this.stats = this.freshStats();
+    this.p2Stats = this.freshStats();
+    if (info) {
+      // 도중 합류 시 지금까지의 점수 반영
+      this.stats.score = info.p1Score;
+      this.p2Stats.score = info.p2Score;
+    }
     this.cyberAI.reset();
     this.cyberAI.setDifficulty(this.currentDifficulty);
     this.clearAllTargets();
     this.spawnTimer = 0;
 
-    // 게임 시작 즉시 초기 표적 3개 즉시 생성 (대기 시간 없이 즉시 조준 사격 가능)
-    const initialCount = Math.min(3, this.difficultyConfigs[this.currentDifficulty].maxTargets);
-    for (let i = 0; i < initialCount; i++) {
-      this.spawnTarget();
+    // 게임 시작 즉시 초기 표적 3개 생성 (표적 생성 권한이 있는 호스트만)
+    if (this.isSpawnHost()) {
+      const initialCount = Math.min(3, this.difficultyConfigs[this.currentDifficulty].maxTargets);
+      for (let i = 0; i < initialCount; i++) {
+        this.spawnTarget();
+      }
     }
 
     this.notifyStats();
     this.notifyVersusStats();
+    if (this.onPauseChange) this.onPauseChange(this.isPaused);
     this.voiceManager.speak('GAME_START');
     if (this.onGameStarted) {
       this.onGameStarted();
     }
   }
 
+  /** 서버의 남은 시간·일시정지 상태로 로컬 시계 보정 */
+  private syncMatchClock(info: MatchInfo) {
+    this.roundTimer = info.remaining;
+    if (info.isPaused !== this.isPaused) {
+      this.setPausedLocal(info.isPaused);
+    }
+  }
+
+  private setPausedLocal(paused: boolean, remaining?: number) {
+    this.isPaused = paused;
+    if (remaining !== undefined) {
+      this.roundTimer = remaining;
+    }
+    if (this.onPauseChange) this.onPauseChange(paused);
+  }
+
   public pauseGame() {
-    this.isPaused = true;
+    if (!this.isPlaying || this.isPaused) return;
+    // 서버 경기는 모든 화면이 함께 멈추도록 서버를 거침 (match_paused 수신 시 정지)
+    if (this.matchId !== null && this.inputManager.sendMatchPause(this.matchId)) return;
+    this.setPausedLocal(true);
   }
 
   public resumeGame() {
-    this.isPaused = false;
-  }
-
-  public stopGame() {
-    let winner: 'P1' | 'P2' | 'DRAW' = 'DRAW';
-    const p1Score = this.stats.score;
-    const p2Score = this.p2Stats.score;
-    if (p1Score > p2Score) winner = 'P1';
-    else if (p2Score > p1Score) winner = 'P2';
-
-    this.inputManager.sendMatchOver(p1Score, p2Score);
-    this.stopGameLocal(winner);
+    if (!this.isPlaying || !this.isPaused) return;
+    if (this.matchId !== null && this.inputManager.sendMatchResume(this.matchId)) return;
+    this.setPausedLocal(false);
   }
 
   public abortGame(reason: string = '경기가 중단되었습니다.') {
+    if (this.pendingStartTimer) {
+      clearTimeout(this.pendingStartTimer);
+      this.pendingStartTimer = null;
+    }
     if (!this.isPlaying) return;
-    this.inputManager.sendMatchAbort(reason);
+    if (this.matchId !== null) {
+      this.inputManager.sendMatchAbort(reason, this.matchId);
+    }
     this.stopGameLocal('ABORT');
   }
 
@@ -1583,12 +1793,31 @@ export class ShootingArenaEngine {
     }
   }
 
+  private winnerFromScores(): 'P1' | 'P2' | 'DRAW' {
+    if (this.stats.score > this.p2Stats.score) return 'P1';
+    if (this.p2Stats.score > this.stats.score) return 'P2';
+    return 'DRAW';
+  }
+
+  private finishWithScores(p1Score: number, p2Score: number, winner?: string) {
+    this.stats.score = p1Score;
+    this.p2Stats.score = p2Score;
+    this.stopGameLocal(winner ?? this.winnerFromScores());
+  }
+
   private stopGameLocal(winner: string = 'DRAW') {
     this.isPlaying = false;
+    this.isPaused = false;
+    if (this.matchId !== null) {
+      this.lastEndedMatchId = this.matchId;
+    }
+    this.matchEndWaitTimer = 0;
     this.vrExitHoldTimer = 0;
     this.updateVRPrompt(true, winner);
     if (this.vrPromptMesh) {
-      this.vrPromptMesh.visible = true;
+      // VR 플레이어 정면에 결과판 표시 (다시 시작 / VR 종료 안내)
+      this.vrPromptMesh.position.set(0, 1.6, -2.5);
+      this.vrPromptMesh.visible = this.renderer.xr.isPresenting && this.localSlot !== null;
     }
     this.soundManager.playGameOver();
 
@@ -1605,10 +1834,58 @@ export class ShootingArenaEngine {
       this.voiceManager.speak('GAME_OVER');
     }
 
+    this.notifyStats();
+    this.notifyVersusStats();
+    if (this.onPauseChange) this.onPauseChange(false);
     if (this.onGameOver) {
       const myFinalStats = this.clientRole === 'P2' ? this.p2Stats : this.stats;
-      this.onGameOver({ ...myFinalStats });
+      this.onGameOver({ ...myFinalStats }, { winner, aborted: winner === 'ABORT' });
     }
+  }
+
+  /** AI 라이벌: 조준·사격하고 실제 레이캐스트로 명중 판정 (AI가 맡은 슬롯의 기록으로 집계) */
+  private updateAIRival(delta: number) {
+    const aiSlot = this.aiSlot;
+    const rivalBlaster = aiSlot === 1 ? this.p1Blaster : this.p2Blaster;
+    const rivalHead = aiSlot === 1 ? this.p1Head : this.p2Head;
+    const aiAction = this.cyberAI.update(delta, this.activeTargets, rivalBlaster.group);
+    // AI 헬멧 회전 동기화 (블래스터 조준 방향을 자연스럽게 추종)
+    rivalHead.quaternion.slerp(rivalBlaster.group.quaternion, Math.min(1.0, delta * 12));
+    if (!aiAction.fire) return;
+
+    rivalBlaster.muzzleFlash.intensity = 15;
+    rivalBlaster.muzzleTimer = 0.08;
+    rivalBlaster.recoilOffset = 0.08;
+    this.soundManager.playFire();
+    this.recordShot(aiSlot);
+    if (this.matchId !== null) {
+      this.inputManager.sendFireEvent(aiSlot);
+    }
+
+    // [물리 3D 레이캐스트 판정] AI 총구 위치 및 실제 정렬 각도로 레이 발사하여 실제 교차 여부 검증
+    const aiMuzzlePos = new THREE.Vector3();
+    const aiMuzzleQuat = new THREE.Quaternion();
+    rivalBlaster.group.getWorldPosition(aiMuzzlePos);
+    rivalBlaster.group.getWorldQuaternion(aiMuzzleQuat);
+    const aiForward = new THREE.Vector3(0, 0, -1).applyQuaternion(aiMuzzleQuat).normalize();
+    const aiColor = aiSlot === 1 ? 0x00f0ff : 0xff0055;
+    const hit = this.raycastTargets(aiMuzzlePos, aiForward);
+
+    if (hit) {
+      // AI 발사 시 레이저 볼트 발사
+      this.spawnLaserBolt(aiMuzzlePos, aiForward, aiColor, hit.distance);
+      hit.target.isHit = true;
+      this.createExplosion(hit.point, aiColor);
+      this.soundManager.playHit();
+      this.cyberAI.recordHit(hit.target.points);
+      this.applyHitResult(aiSlot, hit.target, hit.point);
+    } else {
+      // 사격 조준이 표적과 일치하지 않아 빗맞힘 처리 (치팅 방지)
+      this.spawnLaserBolt(aiMuzzlePos, aiForward, aiColor, 55);
+      this.cyberAI.recordMiss();
+      this.recordMiss(aiSlot);
+    }
+    this.notifyVersusStats();
   }
 
   private animate = () => {
@@ -1642,7 +1919,16 @@ export class ShootingArenaEngine {
       }
 
       if (this.roundTimer <= 0) {
-        this.stopGame();
+        if (this.matchId === null || !this.inputManager.isConnectedToServer) {
+          // 로컬 경기: 내 집계로 판정
+          this.stopGameLocal(this.winnerFromScores());
+        } else {
+          // 서버 경기: 서버의 종료 판정을 기다리고, 응답이 없으면 로컬 집계로 마무리
+          this.matchEndWaitTimer += delta;
+          if (this.matchEndWaitTimer >= SERVER_END_GRACE) {
+            this.stopGameLocal(this.winnerFromScores());
+          }
+        }
       }
 
       // React 상태 업데이트 지능형 스로틀링 (초 단위 변경 또는 최대 4Hz 주기)
@@ -1655,8 +1941,9 @@ export class ShootingArenaEngine {
         this.notifyVersusStats();
       }
 
-      // 표적 스폰 (1P 호스트 주도, 또는 단독 PC 모드)
-      if (this.canSpawnTargetsLocally()) {
+      // 표적 스폰 (호스트 주도, 호스트 화면이 멈췄으면 다른 플레이어가 대신)
+      this.timeSinceRemoteSpawn += delta;
+      if (this.canSpawnTargetsLocally() || this.shouldSpawnAsBackup()) {
         const cfg = this.difficultyConfigs[this.currentDifficulty];
         this.spawnTimer += delta;
         if (this.spawnTimer >= cfg.spawnInterval && this.activeTargets.length < cfg.maxTargets) {
@@ -1665,99 +1952,9 @@ export class ShootingArenaEngine {
         }
       }
 
-      // AI Rival 봇 연산 (인간 상대가 없을 때 자동 실행)
+      // AI Rival 봇 연산 (상대 슬롯이 비어 있을 때 자동 실행)
       if (this.shouldRunAILocally()) {
-        const rivalBlaster = this.clientRole === 'P2' ? this.p1Blaster : this.p2Blaster;
-        const rivalHead = this.clientRole === 'P2' ? this.p1Head : this.p2Head;
-        const aiAction = this.cyberAI.update(delta, this.activeTargets, rivalBlaster.group);
-        // AI 헬멧 회전 동기화 (블래스터 조준 방향을 자연스럽게 추종)
-        rivalHead.quaternion.slerp(rivalBlaster.group.quaternion, Math.min(1.0, delta * 12));
-
-        if (aiAction.fire) {
-          rivalBlaster.muzzleFlash.intensity = 15;
-          rivalBlaster.muzzleTimer = 0.08;
-          rivalBlaster.recoilOffset = 0.08;
-          this.soundManager.playFire();
-
-          const aiShooterId = this.clientRole === 'P2' ? 1 : 2;
-          if (this.clientRole === 'P1') {
-            this.inputManager.sendFireEvent(2);
-          } else if (this.clientRole === 'P2') {
-            this.inputManager.sendFireEvent(1);
-          }
-
-          // [물리 3D 레이캐스트 판정] AI 총구 위치 및 실제 정렬 각도로 레이 발사하여 실제 교차 여부 검증
-          const aiMuzzlePos = new THREE.Vector3();
-          const aiMuzzleQuat = new THREE.Quaternion();
-          rivalBlaster.group.getWorldPosition(aiMuzzlePos);
-          rivalBlaster.group.getWorldQuaternion(aiMuzzleQuat);
-          const aiForward = new THREE.Vector3(0, 0, -1).applyQuaternion(aiMuzzleQuat).normalize();
-
-          this.raycaster.set(aiMuzzlePos, aiForward);
-
-          const targetMeshes: THREE.Object3D[] = [];
-          const targetMap = new Map<THREE.Object3D, TargetObject>();
-
-          this.activeTargets.forEach((t) => {
-            if (!t.isHit) {
-              t.mesh.traverse((child) => {
-                if (child instanceof THREE.Mesh) {
-                  targetMeshes.push(child);
-                  targetMap.set(child, t);
-                }
-              });
-            }
-          });
-
-          const intersects = this.raycaster.intersectObjects(targetMeshes, false);
-          const aiColor = this.clientRole === 'P2' ? 0x00f0ff : 0xff0055;
-
-          if (intersects.length > 0) {
-            const hitPoint = intersects[0].point;
-            const hitDistance = intersects[0].distance;
-            const hitMesh = intersects[0].object;
-            const targetObj = targetMap.get(hitMesh);
-
-            // AI 발사 시 레이저 볼트 발사
-            this.spawnLaserBolt(aiMuzzlePos, aiForward, aiColor, hitDistance);
-
-            if (targetObj && !targetObj.isHit) {
-              targetObj.isHit = true;
-              this.createExplosion(hitPoint, aiColor);
-              this.soundManager.playHit();
-
-              const addedScore = this.cyberAI.recordHit(targetObj.points);
-              this.p2Stats.score = this.cyberAI.stats.score;
-              this.p2Stats.hits = this.cyberAI.stats.hits;
-              this.p2Stats.combo = this.cyberAI.stats.combo;
-              this.p2Stats.accuracy = this.cyberAI.stats.accuracy;
-              this.notifyVersusStats();
-
-              // 피격 확정 요청 전송
-              if (targetObj.id) {
-                const hitPosArr: [number, number, number] = [
-                  hitPoint.x,
-                  hitPoint.y,
-                  hitPoint.z,
-                ];
-                this.inputManager.sendHitRequest(
-                  targetObj.id,
-                  aiShooterId,
-                  hitPosArr,
-                  addedScore,
-                  this.cyberAI.stats.combo
-                );
-              }
-            }
-          } else {
-            // 사격 조준이 표적과 일치하지 않아 빗맞힘 처리 (치팅 방지)
-            this.spawnLaserBolt(aiMuzzlePos, aiForward, aiColor, 55);
-            this.cyberAI.recordMiss();
-            this.p2Stats.accuracy = this.cyberAI.stats.accuracy;
-            this.p2Stats.combo = 0;
-            this.notifyVersusStats();
-          }
-        }
+        this.updateAIRival(delta);
       }
     }
 
@@ -1812,9 +2009,15 @@ export class ShootingArenaEngine {
         const stick = this.inputManager.getStick();
         const targetPitch = this.mouseNormY * 0.45 + stick.y * 0.25;
         const targetYaw = -this.mouseNormX * 0.65 - stick.x * 0.35;
-        this.aimPitch = THREE.MathUtils.lerp(this.aimPitch, targetPitch, delta * 18);
-        this.aimYaw = THREE.MathUtils.lerp(this.aimYaw, targetYaw, delta * 18);
+        // 보간 계수가 1을 넘으면(18fps 미만) 조준이 목표를 지나쳐 진동하므로 1로 제한
+        const aimLerp = Math.min(1, delta * 18);
+        this.aimPitch = THREE.MathUtils.lerp(this.aimPitch, targetPitch, aimLerp);
+        this.aimYaw = THREE.MathUtils.lerp(this.aimYaw, targetYaw, aimLerp);
 
+        if (localBlaster.group.parent !== this.playerRig) {
+          // VR 종료·역할 변경 후에도 블래스터가 내 리그를 따라오도록 복귀
+          this.resetLocalBlasterToDefault();
+        }
         const defaultX = this.clientRole === 'P2' ? 0.35 : -0.35;
         localBlaster.group.position.set(defaultX, 1.35, -0.45);
         localBlaster.group.rotation.set(this.aimPitch + localBlaster.recoilOffset, this.aimYaw, 0);
@@ -1839,16 +2042,19 @@ export class ShootingArenaEngine {
           blasterQuat: [this._tempQuat2.x, this._tempQuat2.y, this._tempQuat2.z, this._tempQuat2.w],
         });
 
-        // AI Rival 모드: P1 호스트가 AI 봇(P2)의 6DoF 헤드 및 블래스터 위치/회전도 관람자에게 동기화 브로드캐스트
-        if (this.clientRole === 'P1' && !this.inputManager.isP2Connected) {
-          this.p2Head.getWorldPosition(this._tempVec1);
-          this.p2Head.getWorldQuaternion(this._tempQuat1);
+        // AI 라이벌 모드: AI를 돌리는 플레이어가 AI의 헬멧·블래스터 자세도 다른 화면에 전송
+        if (this.isPlaying && this.matchId !== null && this.ownsAIRival()) {
+          const aiSlot = this.aiSlot;
+          const aiHead = aiSlot === 1 ? this.p1Head : this.p2Head;
+          const aiBlaster = aiSlot === 1 ? this.p1Blaster : this.p2Blaster;
+          aiHead.getWorldPosition(this._tempVec1);
+          aiHead.getWorldQuaternion(this._tempQuat1);
 
-          this.p2Blaster.group.getWorldPosition(this._tempVec2);
-          this.p2Blaster.group.getWorldQuaternion(this._tempQuat2);
+          aiBlaster.group.getWorldPosition(this._tempVec2);
+          aiBlaster.group.getWorldQuaternion(this._tempQuat2);
 
           this.inputManager.sendPose({
-            playerId: 2,
+            playerId: aiSlot,
             headPos: [this._tempVec1.x, this._tempVec1.y, this._tempVec1.z],
             headQuat: [this._tempQuat1.x, this._tempQuat1.y, this._tempQuat1.z, this._tempQuat1.w],
             blasterPos: [this._tempVec2.x, this._tempVec2.y, this._tempVec2.z],
@@ -1994,21 +2200,13 @@ export class ShootingArenaEngine {
   }
 
   public setRole(role: ClientRole, notifyServer: boolean = false) {
+    const changed = role !== this.clientRole;
     this.clientRole = role;
     if (notifyServer) {
       this.inputManager.setRequestedRole(role);
     }
-    if (role === 'SPECTATOR') {
-      this.p1Head.visible = true;
-      this.p2Head.visible = true;
-    } else if (role === 'P1') {
-      this.p1Head.visible = false;
-      this.p2Head.visible = true;
-      this.attachLocalBlasterToActiveController();
-    } else if (role === 'P2') {
-      this.p2Head.visible = false;
-      this.p1Head.visible = true;
-      this.attachLocalBlasterToActiveController();
+    if (changed) {
+      this.applyRoleLayout();
     }
   }
 
@@ -2017,6 +2215,10 @@ export class ShootingArenaEngine {
   }
 
   public dispose() {
+    if (this.pendingStartTimer) {
+      clearTimeout(this.pendingStartTimer);
+      this.pendingStartTimer = null;
+    }
     this.renderer.setAnimationLoop(null);
     window.removeEventListener('resize', this.onWindowResize);
     window.removeEventListener('pointermove', this.onPointerMove);

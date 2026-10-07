@@ -3,7 +3,7 @@
 > **IoT 무선 하드웨어(Wii Nunchuk + Raspberry Pi Pico 2 W)와 Meta Quest 2/3 WebXR 기반의 1:1 3D 사이버 사격 배틀 아레나**
 
 [![Next.js](https://img.shields.io/badge/Next.js-16_Turbopack-black?style=flat&logo=next.js)](https://nextjs.org/)
-[![Three.js](https://img.shields.io/badge/Three.js-r174-049EF4?style=flat&logo=three.js)](https://threejs.org/)
+[![Three.js](https://img.shields.io/badge/Three.js-r186-049EF4?style=flat&logo=three.js)](https://threejs.org/)
 [![WebXR](https://img.shields.io/badge/WebXR-6DoF_Immersive-FF5722?style=flat)](https://www.w3.org/TR/webxr/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![CircuitPython](https://img.shields.io/badge/CircuitPython-9.x-brightgreen?style=flat)](https://circuitpython.org/)

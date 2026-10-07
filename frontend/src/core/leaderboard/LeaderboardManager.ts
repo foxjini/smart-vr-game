@@ -1,14 +1,16 @@
 import { LeaderboardEntry } from '@/types';
 
-const STORAGE_KEY = 'cyber_strike_vr_leaderboard';
+// 표적당 1~2점 배점으로 바뀌면서 이전(수백~수천 점 단위) 기록과 비교할 수 없어 저장 키를 분리
+const STORAGE_KEY = 'cyber_strike_vr_leaderboard_v2';
 
+// 예시 기록: 60초 경기에서 실제로 나올 수 있는 점수대 (정보·통신 2점, 나머지 1점)
 const DEFAULT_ENTRIES: LeaderboardEntry[] = [
   {
     id: 'entry-1',
     playerName: 'CYBER_GUNNER',
-    score: 18500,
-    accuracy: 94.2,
-    maxCombo: 24,
+    score: 32,
+    accuracy: 88,
+    maxCombo: 9,
     difficulty: 'hard',
     theme: 'cyber',
     date: '2026-09-28'
@@ -16,9 +18,9 @@ const DEFAULT_ENTRIES: LeaderboardEntry[] = [
   {
     id: 'entry-2',
     playerName: 'APEX_STRIKER',
-    score: 15400,
-    accuracy: 91.0,
-    maxCombo: 19,
+    score: 27,
+    accuracy: 84,
+    maxCombo: 7,
     difficulty: 'hard',
     theme: 'space',
     date: '2026-09-29'
@@ -26,9 +28,9 @@ const DEFAULT_ENTRIES: LeaderboardEntry[] = [
   {
     id: 'entry-3',
     playerName: 'VR_SNIPER_KR',
-    score: 12800,
-    accuracy: 88.5,
-    maxCombo: 15,
+    score: 22,
+    accuracy: 80,
+    maxCombo: 6,
     difficulty: 'normal',
     theme: 'city',
     date: '2026-09-29'
@@ -36,9 +38,9 @@ const DEFAULT_ENTRIES: LeaderboardEntry[] = [
   {
     id: 'entry-4',
     playerName: 'NEO_PHANTOM',
-    score: 10200,
-    accuracy: 85.0,
-    maxCombo: 12,
+    score: 17,
+    accuracy: 75,
+    maxCombo: 5,
     difficulty: 'normal',
     theme: 'cyber',
     date: '2026-09-30'
@@ -46,9 +48,9 @@ const DEFAULT_ENTRIES: LeaderboardEntry[] = [
   {
     id: 'entry-5',
     playerName: 'PILOT_ZERO',
-    score: 8400,
-    accuracy: 82.1,
-    maxCombo: 10,
+    score: 12,
+    accuracy: 70,
+    maxCombo: 4,
     difficulty: 'easy',
     theme: 'space',
     date: '2026-09-30'

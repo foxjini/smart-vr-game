@@ -107,9 +107,13 @@ async def websocket_game_endpoint(websocket: WebSocket):
             text_data = await websocket.receive_text()
             try:
                 data = json.loads(text_data)
-                await manager.handle_game_message(websocket, data)
             except json.JSONDecodeError:
-                pass
+                continue
+            try:
+                await manager.handle_game_message(websocket, data)
+            except Exception:
+                # 잘못된 메시지 하나 때문에 연결 전체가 끊기지 않도록 기록만 하고 계속 수신
+                logger.exception("Failed to handle game message")
     except WebSocketDisconnect:
         manager.disconnect_game(websocket)
     except Exception as e:

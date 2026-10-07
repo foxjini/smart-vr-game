@@ -6,7 +6,6 @@ import {
   Trophy,
   X,
   RotateCcw,
-  Award,
   Medal,
 } from 'lucide-react';
 
@@ -59,7 +58,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
           <div className="flex flex-col">
             <span className="text-[10px] text-amber-400 tracking-widest flex items-center gap-1.5">
               <Trophy className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.75} />
-              <span>// 글로벌 사격 랭킹 매트릭스</span>
+              <span>{'// 글로벌 사격 랭킹 매트릭스'}</span>
             </span>
             <h2 className="cyber-title text-xl text-white">명예의 전당 (TOP 10)</h2>
           </div>

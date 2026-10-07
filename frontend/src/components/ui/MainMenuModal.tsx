@@ -41,6 +41,8 @@ interface MainMenuModalProps {
   clientRole?: ClientRole;
   versusMode?: 'VERSUS_PVP' | 'VERSUS_AI';
   isP2Connected?: boolean;
+  /** 다른 기기가 같은 역할로 접속해 이 기기의 연결이 해제됨 */
+  isReplaced?: boolean;
 }
 
 export const MainMenuModal: React.FC<MainMenuModalProps> = ({
@@ -58,6 +60,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   clientRole = 'P1',
   versusMode = 'VERSUS_AI',
   isP2Connected = false,
+  isReplaced = false,
 }) => {
   const [currentStep, setCurrentStep] = useState<MenuStep>('welcome');
 
@@ -118,6 +121,12 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
                 <span>[{getRoleKorean(clientRole)}]</span>
               </div>
+
+              {isReplaced && (
+                <span className="text-red-300 font-bold font-mono text-[11px] px-2 py-0.5 border border-red-500/50 rounded bg-red-950/40">
+                  [다른 기기가 같은 역할로 접속해 연결 해제됨 · 설정에서 역할을 바꾸거나 새로고침]
+                </span>
+              )}
 
               {/* 1:1 PvP 매칭 상태 */}
               <div>
@@ -320,7 +329,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
               <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
                 <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
                   <Target className="w-4 h-4" />
-                  <span>// 02. 게임 대결 룰 & 점수 줄다리기 안내</span>
+                  <span>{'// 02. 게임 대결 룰 & 점수 줄다리기 안내'}</span>
                 </div>
                 <span className="text-gray-400 text-xs font-mono">인천전자마이스터고 정보통신과</span>
               </div>
@@ -436,7 +445,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
               <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
                 <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
                   <Zap className="w-4 h-4" />
-                  <span>// 03. 조작 방법 & 신나는 VR 배틀 출격!</span>
+                  <span>{'// 03. 조작 방법 & 신나는 VR 배틀 출격!'}</span>
                 </div>
                 <div className="text-yellow-400 text-xs flex items-center gap-1 font-mono">
                   <Trophy className="w-3.5 h-3.5" />

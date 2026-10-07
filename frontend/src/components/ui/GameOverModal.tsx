@@ -9,7 +9,6 @@ import {
   Sliders,
   Award,
   Check,
-  Zap,
   Home,
 } from 'lucide-react';
 
@@ -89,7 +88,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         {/* 헤더 */}
         <div className="flex flex-col gap-1 w-full border-b border-cyan-500/20 pb-3">
           <div className="text-[10px] uppercase tracking-widest text-cyan-400 font-mono">
-            // 경기 결과 분석 // 1:1 대결 종합 평가
+            {'// 경기 결과 분석 // 1:1 대결 종합 평가'}
           </div>
           <h2 className="cyber-title text-2xl text-white">교전 결과 브리핑</h2>
           
@@ -158,7 +157,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           <div className="flex justify-between items-center text-[10px]">
             <span className="text-cyan-300 font-bold flex items-center gap-1">
               <Award className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} />
-              <span>// 텔레메트리 로그: 순위표 기록 등록</span>
+              <span>{'// 텔레메트리 로그: 순위표 기록 등록'}</span>
             </span>
             <div className="flex items-center gap-1.5">
               {isNewRecord && (

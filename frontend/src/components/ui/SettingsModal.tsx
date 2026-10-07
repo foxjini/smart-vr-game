@@ -14,10 +14,7 @@ import {
   Crosshair,
   Server,
   Check,
-  Zap,
   User,
-  Tv,
-  Eye,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -95,7 +92,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex flex-col">
             <span className="text-[10px] text-cyan-400 font-mono tracking-widest flex items-center gap-1.5">
               <Sliders className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.75} />
-              <span>// 시스템 환경 설정</span>
+              <span>{'// 시스템 환경 설정'}</span>
             </span>
             <h2 className="cyber-title text-xl text-white">사격장 가상 환경 및 오디오 제어</h2>
           </div>
@@ -304,7 +301,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex justify-between items-center">
             <span className="text-[11px] text-cyan-400 font-mono font-bold flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-cyan-400" />
-              <span>// 전시회 기기 역할 고정 (Device Role Lock)</span>
+              <span>{'// 전시회 기기 역할 고정 (Device Role Lock)'}</span>
             </span>
             <span className="text-[10px] text-gray-400">
               현재 기기: <b className="text-white font-mono">{clientRole === 'P1' ? '선수 1 (시안)' : clientRole === 'P2' ? '선수 2 (마젠타)' : '관람 중계자'}</b>

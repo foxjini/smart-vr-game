@@ -1,6 +1,25 @@
-import { SystemStatus, StickData, ClientRole, PlayerPose, TargetSpawnPacket, Difficulty } from '@/types';
+import { SystemStatus, StickData, ClientRole, PlayerPose, TargetSpawnPacket, Difficulty, MatchInfo } from '@/types';
 
 export type InputMode = 'HYBRID' | 'STANDALONE' | 'WEBSOCKET_ONLY';
+
+/** 다른 기기가 같은 플레이어 슬롯으로 접속해 이 연결을 대체했을 때 서버가 보내는 종료 코드 */
+const CLOSE_CODE_REPLACED = 4001;
+
+const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
+
+function parseMatchInfo(data: Record<string, unknown>): MatchInfo {
+  const difficulty = DIFFICULTIES.find((d) => d === data.difficulty);
+  return {
+    matchId: Number(data.matchId ?? 0),
+    isMatchActive: Boolean(data.isMatchActive ?? true),
+    isPaused: Boolean(data.isPaused),
+    duration: Number(data.duration ?? 60),
+    remaining: Number(data.remaining ?? data.duration ?? 60),
+    difficulty,
+    p1Score: Number(data.p1Score ?? 0),
+    p2Score: Number(data.p2Score ?? 0),
+  };
+}
 
 export class InputManager {
   private static instance: InputManager;
@@ -13,6 +32,8 @@ export class InputManager {
 
   public mode: InputMode = 'HYBRID';
   public isConnectedToServer: boolean = false;
+  /** 다른 기기가 같은 역할로 접속해 연결이 해제된 상태 (자동 재접속하지 않음) */
+  public wasReplaced: boolean = false;
   public clientRole: ClientRole = 'P1';
   public playerId: number | null = 1;
   public isP1Connected: boolean = false;
@@ -48,6 +69,7 @@ export class InputManager {
   public onRemoteFire?: (data: { playerId: number; timestamp?: number }) => void;
   public onRemoteTargetSpawn?: (data: TargetSpawnPacket) => void;
   public onTargetHitConfirmed?: (data: {
+    matchId?: number;
     targetId: string;
     hitBy: number;
     hitPoint: [number, number, number];
@@ -56,9 +78,15 @@ export class InputManager {
     p2Score: number;
     combo: number;
   }) => void;
-  public onMatchStarted?: (duration: number) => void;
-  public onMatchOverBroadcast?: (data: { p1Score: number; p2Score: number; winner: string }) => void;
-  public onMatchAborted?: (message?: string) => void;
+  /** 서버가 새 경기를 시작했거나, 시작 요청에 대해 진행 중인 경기 정보를 보냄 */
+  public onMatchStarted?: (info: MatchInfo) => void;
+  /** 접속·방 상태 갱신 때마다 받는 현재 경기 상태 (도중 합류 및 시간 보정용) */
+  public onMatchState?: (info: MatchInfo) => void;
+  public onMatchOverBroadcast?: (data: { matchId?: number; p1Score: number; p2Score: number; winner: string }) => void;
+  public onMatchAborted?: (data: { matchId?: number; message?: string }) => void;
+  public onMatchPaused?: (data: { matchId?: number; remaining: number }) => void;
+  public onMatchResumed?: (data: { matchId?: number; remaining: number }) => void;
+  public onConnectionReplaced?: () => void;
 
   // 감도 및 설정
   public sensitivity: number = 1.0;
@@ -144,6 +172,7 @@ export class InputManager {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.wasReplaced = false;
 
     let targetUrl = url;
     if (!targetUrl) {
@@ -190,11 +219,18 @@ export class InputManager {
         }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (this.ws !== socket) return;
         this.isConnectedToServer = false;
-        this.notifyStatus();
         this.ws = null;
+        if (event.code === CLOSE_CODE_REPLACED) {
+          // 다른 기기가 같은 역할로 접속함: 다시 접속하면 서로 밀어내기를 반복하므로 자동 재접속하지 않음
+          this.wasReplaced = true;
+          this.notifyStatus();
+          if (this.onConnectionReplaced) this.onConnectionReplaced();
+          return;
+        }
+        this.notifyStatus();
         if (!this.reconnectTimer) {
           this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
@@ -252,8 +288,8 @@ export class InputManager {
       if (this.onClientAssigned) {
         this.onClientAssigned(this.clientRole, this.playerId);
       }
-      if (data.isMatchActive && this.clientRole === 'SPECTATOR' && this.onMatchStarted) {
-        this.onMatchStarted(60);
+      if (this.onMatchState) {
+        this.onMatchState(parseMatchInfo(data));
       }
       return;
     }
@@ -267,8 +303,8 @@ export class InputManager {
       if (this.onRoomStateChange) {
         this.onRoomStateChange(data);
       }
-      if (data.isMatchActive && this.clientRole === 'SPECTATOR' && this.onMatchStarted) {
-        this.onMatchStarted(60);
+      if (this.onMatchState) {
+        this.onMatchState(parseMatchInfo(data));
       }
       this.notifyStatus();
       return;
@@ -298,6 +334,7 @@ export class InputManager {
     if (type === 'target_hit_confirmed') {
       if (this.onTargetHitConfirmed) {
         this.onTargetHitConfirmed(data as unknown as {
+          matchId?: number;
           targetId: string;
           hitBy: number;
           hitPoint: [number, number, number];
@@ -312,22 +349,29 @@ export class InputManager {
 
     if (type === 'match_started') {
       if (this.onMatchStarted) {
-        this.onMatchStarted(Number(data.duration || 60));
+        this.onMatchStarted(parseMatchInfo(data));
       }
       return;
     }
 
     if (type === 'match_over_broadcast') {
       if (this.onMatchOverBroadcast) {
-        this.onMatchOverBroadcast(data as unknown as { p1Score: number; p2Score: number; winner: string });
+        this.onMatchOverBroadcast(data as unknown as { matchId?: number; p1Score: number; p2Score: number; winner: string });
       }
       return;
     }
 
     if (type === 'match_aborted') {
       if (this.onMatchAborted) {
-        this.onMatchAborted(data.message as string);
+        this.onMatchAborted(data as unknown as { matchId?: number; message?: string });
       }
+      return;
+    }
+
+    if (type === 'match_paused' || type === 'match_resumed') {
+      const payload = { matchId: data.matchId as number | undefined, remaining: Number(data.remaining ?? 0) };
+      const handler = type === 'match_paused' ? this.onMatchPaused : this.onMatchResumed;
+      if (handler) handler(payload);
       return;
     }
 
@@ -343,62 +387,52 @@ export class InputManager {
     }
   }
 
-  // --- 송신 메서드 ---
-  public sendPose(pose: PlayerPose) {
+  // --- 송신 메서드 (전송 성공 여부 반환) ---
+  private send(payload: Record<string, unknown>): boolean {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'player_pose', ...pose }));
+      this.ws.send(JSON.stringify(payload));
+      return true;
     }
+    return false;
+  }
+
+  public sendPose(pose: PlayerPose) {
+    return this.send({ type: 'player_pose', ...pose });
   }
 
   public sendFireEvent(playerId: number) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'fire_event', playerId, timestamp: Date.now() }));
-    }
+    return this.send({ type: 'fire_event', playerId, timestamp: Date.now() });
   }
 
-  public sendTargetSpawn(spawnData: Record<string, unknown>) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'target_spawn', ...spawnData }));
-    }
+  public sendTargetSpawn(spawnData: TargetSpawnPacket) {
+    return this.send({ type: 'target_spawn', ...spawnData });
   }
 
+  /** 명중 확정 요청 (배점은 서버가 표적 생성 기록으로 판정) */
   public sendHitRequest(
     targetId: string,
     hitBy: number,
     hitPoint: [number, number, number],
-    addedScore: number,
-    combo: number
+    combo: number,
+    matchId: number
   ) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(
-        JSON.stringify({
-          type: 'hit_request',
-          targetId,
-          hitBy,
-          hitPoint,
-          addedScore,
-          combo,
-        })
-      );
-    }
+    return this.send({ type: 'hit_request', targetId, hitBy, hitPoint, combo, matchId });
   }
 
-  public sendMatchStart(duration: number = 60) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'match_start', duration }));
-    }
+  public sendMatchStart(duration: number = 60, difficulty?: Difficulty) {
+    return this.send({ type: 'match_start', duration, difficulty });
   }
 
-  public sendMatchOver(p1Score: number, p2Score: number) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'match_over', p1Score, p2Score }));
-    }
+  public sendMatchPause(matchId: number) {
+    return this.send({ type: 'match_pause', matchId });
   }
 
-  public sendMatchAbort(message: string = '경기가 중단되었습니다.') {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'match_abort', message }));
-    }
+  public sendMatchResume(matchId: number) {
+    return this.send({ type: 'match_resume', matchId });
+  }
+
+  public sendMatchAbort(message: string, matchId: number) {
+    return this.send({ type: 'match_abort', message, matchId });
   }
 
   private notifyStatus() {

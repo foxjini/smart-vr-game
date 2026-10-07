@@ -3,7 +3,6 @@
 import React from 'react';
 import { GameStats, SystemStatus, VersusMatchStats, ClientRole, SpectatorCameraMode, Difficulty } from '@/types';
 import {
-  Activity,
   Sliders,
   Play,
   Pause,
@@ -24,7 +23,10 @@ interface GameHUDProps {
   clientRole: ClientRole;
   difficulty?: Difficulty;
   isWsConnected: boolean;
+  /** 다른 기기가 같은 역할로 접속해 이 기기의 연결이 해제됨 */
+  isReplaced?: boolean;
   isPlaying: boolean;
+  isPaused?: boolean;
   onStartGame: () => void;
   onPauseGame: () => void;
   onAbortGame?: () => void;
@@ -43,7 +45,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   clientRole,
   difficulty = 'normal',
   isWsConnected,
+  isReplaced = false,
   isPlaying,
+  isPaused = false,
   onStartGame,
   onPauseGame,
   onAbortGame,
@@ -96,7 +100,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span className={`indicator-dot ${isWsConnected ? 'dot-green' : 'dot-red'}`} />
               <span className="text-gray-400">서버:</span>
               <span className={isWsConnected ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
-                {isWsConnected ? '정상 연결' : '오프라인'}
+                {isWsConnected ? '정상 연결' : isReplaced ? '다른 기기가 같은 역할로 접속해 연결 해제됨' : '오프라인'}
               </span>
             </div>
 
@@ -164,8 +168,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
             <div className="flex justify-between w-full text-[10px] font-mono text-gray-400 pt-0.5">
               <span>명중: {stats.hits}</span>
-              <span className={`font-bold ${stats.timeRemaining <= 10 ? 'text-red-400 animate-pulse' : 'text-slate-200'}`}>
-                남은 시간: {String(stats.timeRemaining).padStart(2, '0')}초
+              <span className={`font-bold ${isPaused ? 'text-amber-300' : stats.timeRemaining <= 10 ? 'text-red-400 animate-pulse' : 'text-slate-200'}`}>
+                {isPaused ? '일시정지 중 · ' : ''}남은 시간: {String(stats.timeRemaining).padStart(2, '0')}초
               </span>
               <span>연속 콤보: {stats.combo > 0 ? `${stats.combo}x` : '0x'}</span>
             </div>
@@ -220,8 +224,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 onClick={onPauseGame}
                 className="hud-btn hud-btn-magenta py-1.5 px-2.5 text-xs font-bold gap-1"
               >
-                <Pause className="w-3 h-3 text-white" strokeWidth={2} />
-                <span>일시정지</span>
+                {isPaused ? (
+                  <Play className="w-3 h-3 text-white" strokeWidth={2} />
+                ) : (
+                  <Pause className="w-3 h-3 text-white" strokeWidth={2} />
+                )}
+                <span>{isPaused ? '재개' : '일시정지'}</span>
               </button>
               {onAbortGame && (
                 <button

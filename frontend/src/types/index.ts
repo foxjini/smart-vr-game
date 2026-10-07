@@ -97,6 +97,19 @@ export interface TargetSpawnPacket {
   amplitude: number;
   keyword?: TargetKeyword;
   points?: number;
+  matchId?: number;
+}
+
+/** 서버가 알려주는 경기 상태 (match_started / client_assigned / room_state) */
+export interface MatchInfo {
+  matchId: number;
+  isMatchActive: boolean;
+  isPaused: boolean;
+  duration: number;
+  remaining: number;
+  difficulty?: Difficulty;
+  p1Score: number;
+  p2Score: number;
 }
 
 export interface VersusMatchStats {
