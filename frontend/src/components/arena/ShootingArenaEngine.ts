@@ -93,6 +93,7 @@ export class ShootingArenaEngine {
   public isPlaying: boolean = false;
   public isPaused: boolean = false;
   public clientRole: ClientRole = 'P1';
+  public vrExitHoldTimer: number = 0;
 
   // AI 및 관람 카메라
   public cyberAI = new CyberAIRival('normal');
@@ -354,6 +355,12 @@ export class ShootingArenaEngine {
       this.stats.score = data.p1Score;
       this.p2Stats.score = data.p2Score;
       this.stopGameLocal(data.winner);
+    };
+
+    this.inputManager.onMatchAborted = (_msg) => {
+      if (this.isPlaying) {
+        this.stopGameLocal('ABORT');
+      }
     };
   }
 
@@ -649,14 +656,16 @@ export class ShootingArenaEngine {
       ctx.fillText('1:1 VERSUS ARENA DEBRIEF', w / 2, 65);
 
       // 승자 발표 배너
-      const winText =
-        winner === 'P1'
-          ? '🏆 PLAYER 1 (CYAN) WINS!'
-          : winner === 'P2'
-          ? '🏆 PLAYER 2 (MAGENTA) WINS!'
-          : '🤝 DRAW MATCH!';
-      ctx.fillStyle = winner === 'P1' ? '#00f0ff' : winner === 'P2' ? '#ff0055' : '#ffffff';
-      ctx.font = '900 48px sans-serif';
+      let winText = '🤝 DRAW MATCH!';
+      if (winner === 'ABORT') {
+        winText = '🛑 MATCH ABORTED (경기 중단)';
+      } else if (winner === 'P1') {
+        winText = '🏆 PLAYER 1 (CYAN) WINS!';
+      } else if (winner === 'P2') {
+        winText = '🏆 PLAYER 2 (MAGENTA) WINS!';
+      }
+      ctx.fillStyle = winner === 'ABORT' ? '#ff0055' : winner === 'P1' ? '#00f0ff' : winner === 'P2' ? '#ff0055' : '#ffffff';
+      ctx.font = '900 46px sans-serif';
       ctx.fillText(winText, w / 2, 130);
 
       // 좌측 P1 스탯 박스
@@ -702,10 +711,14 @@ export class ShootingArenaEngine {
       ctx.fillText(`명중: ${this.p2Stats.hits}회 / 명중률: ${this.p2Stats.accuracy}%`, 760, 360);
       ctx.fillText(`최대 콤보: ${this.p2Stats.maxCombo}x`, 760, 410);
 
-      // 하단 안내
+      // 하단 안내: 2대 명확한 선택지 제공
       ctx.fillStyle = '#00ffaa';
-      ctx.font = 'bold 24px monospace';
-      ctx.fillText('[ 트리거를 당겨 재경기 시작 ]', w / 2, 590);
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillText('🔫 [트리거 방아쇠] : VR 모드 유지하고 다시 시작', w / 2, 570);
+
+      ctx.fillStyle = '#ffaa00';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('🚪 [그립 / 메뉴 버튼] : VR 종료하고 웹 메인 화면 복귀', w / 2, 615);
     } else {
       // 2. 대기 상태 안내판 (1px 투명 HUD 스타일)
       ctx.fillStyle = 'rgba(4, 9, 20, 0.45)';
@@ -748,8 +761,8 @@ export class ShootingArenaEngine {
       ctx.fillText(vsModeText, w / 2, 340);
 
       ctx.fillStyle = '#00f0ff';
-      ctx.font = 'bold 28px monospace';
-      ctx.fillText('[ 트리거를 당기거나 시작 버튼으로 출격 ]', w / 2, 470);
+      ctx.font = 'bold 26px sans-serif';
+      ctx.fillText('🔫 [트리거] : 경기 출격  |  🚪 [그립/메뉴] : VR 종료', w / 2, 470);
     }
   }
 
@@ -794,7 +807,14 @@ export class ShootingArenaEngine {
 
     ctx.textAlign = 'center';
 
-    if (myStats.isReloading) {
+    if (this.vrExitHoldTimer > 0) {
+      ctx.fillStyle = '#ff0055';
+      ctx.font = '900 36px monospace';
+      ctx.fillText(`EXIT: ${(1.2 - this.vrExitHoldTimer).toFixed(1)}s`, canvas.width / 2, 105);
+      ctx.fillStyle = '#ffe600';
+      ctx.font = 'bold 22px monospace';
+      ctx.fillText('KEEP HOLDING TO QUIT', canvas.width / 2, 185);
+    } else if (myStats.isReloading) {
       ctx.fillStyle = '#ffaa00';
       ctx.font = '900 40px monospace';
       ctx.fillText('RELOADING...', canvas.width / 2, 105);
@@ -1270,8 +1290,13 @@ export class ShootingArenaEngine {
 
   public handleReload() {
     if (this.clientRole === 'SPECTATOR') return;
+    if (!this.isPlaying) {
+      // 대기/게임오버 상태에서 그립을 쥐면 VR 모드 종료 후 브라우저 복귀
+      this.exitVR();
+      return;
+    }
     const myStats = this.clientRole === 'P2' ? this.p2Stats : this.stats;
-    if (!this.isPlaying || this.isPaused || myStats.isReloading) return;
+    if (this.isPaused || myStats.isReloading) return;
     if (myStats.ammo === myStats.maxAmmo) return;
 
     myStats.isReloading = true;
@@ -1491,8 +1516,22 @@ export class ShootingArenaEngine {
     this.stopGameLocal(winner);
   }
 
+  public abortGame(reason: string = '경기가 중단되었습니다.') {
+    if (!this.isPlaying) return;
+    this.inputManager.sendMatchAbort(reason);
+    this.stopGameLocal('ABORT');
+  }
+
+  public exitVR() {
+    const session = this.renderer.xr.getSession();
+    if (session) {
+      session.end();
+    }
+  }
+
   private stopGameLocal(winner: string = 'DRAW') {
     this.isPlaying = false;
+    this.vrExitHoldTimer = 0;
     this.updateVRPrompt(true, winner);
     if (this.vrPromptMesh) {
       this.vrPromptMesh.visible = true;
@@ -1502,7 +1541,9 @@ export class ShootingArenaEngine {
     const amWinner =
       (this.clientRole === 'P1' && winner === 'P1') ||
       (this.clientRole === 'P2' && winner === 'P2');
-    if (amWinner) {
+    if (winner === 'ABORT') {
+      this.voiceManager.speak('GAME_OVER');
+    } else if (amWinner) {
       this.voiceManager.speak('VICTORY');
     } else if (winner !== 'DRAW') {
       this.voiceManager.speak('DEFEAT');
@@ -1667,21 +1708,34 @@ export class ShootingArenaEngine {
         localBlaster.group.position.set(0, -0.04, -0.15);
         localBlaster.group.rotation.set(-0.25 + localBlaster.recoilOffset, 0, 0);
 
-        // Quest 2 게임패드 버튼 폴링
+        // Quest 2 게임패드 버튼 폴링 (메뉴/보조 버튼 긴급 탈출 감지)
         const session = this.renderer.xr.getSession();
         if (session) {
+          let exitPressed = false;
           for (const source of session.inputSources) {
             if (source.gamepad) {
-              const btn4 = source.gamepad.buttons[4]?.pressed;
-              const btn5 = source.gamepad.buttons[5]?.pressed;
+              const btn4 = source.gamepad.buttons[4]?.pressed; // X (왼손) / A (오른손)
+              const btn5 = source.gamepad.buttons[5]?.pressed; // Y (왼손) / B (오른손)
               if (btn4 || btn5) {
-                if (this.isPlaying) {
-                  this.handleReload();
-                } else {
-                  session.end();
-                }
+                exitPressed = true;
+                break;
               }
             }
+          }
+
+          if (exitPressed) {
+            if (this.isPlaying) {
+              this.vrExitHoldTimer += delta;
+              if (this.vrExitHoldTimer >= 1.2) {
+                this.vrExitHoldTimer = 0;
+                this.abortGame('플레이어 컨트롤러 긴급 탈출');
+                this.exitVR();
+              }
+            } else {
+              this.exitVR();
+            }
+          } else {
+            this.vrExitHoldTimer = 0;
           }
         }
       } else {

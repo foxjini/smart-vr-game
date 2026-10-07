@@ -198,6 +198,16 @@ class ConnectionManager:
                 "winner": winner
             })
 
+        elif msg_type == "match_abort":
+            self.is_match_active = False
+            abort_msg = data.get("message", "경기가 관리자 또는 플레이어에 의해 중단되었습니다.")
+            logger.info(f"Match aborted: {abort_msg}")
+            await self.broadcast_to_all({
+                "type": "match_aborted",
+                "message": abort_msg
+            })
+            await self.broadcast_room_state()
+
     # 레거시 하드웨어 (Pico / Virtual Pad) 메서드 호환 유지
     async def connect_pico(self, websocket: WebSocket):
         await websocket.accept()

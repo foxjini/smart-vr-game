@@ -10,6 +10,7 @@ import {
   Award,
   Check,
   Zap,
+  Home,
 } from 'lucide-react';
 
 interface GameOverModalProps {
@@ -23,6 +24,7 @@ interface GameOverModalProps {
   onRestart: () => void;
   onOpenSettings: () => void;
   onViewLeaderboard: (highlightId?: string) => void;
+  onGoToMainMenu?: () => void;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
@@ -36,6 +38,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onRestart,
   onOpenSettings,
   onViewLeaderboard,
+  onGoToMainMenu,
 }) => {
   const [playerName, setPlayerName] = useState(clientRole === 'P2' ? '플레이어_02' : '플레이어_01');
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -206,7 +209,16 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         </div>
 
         {/* 하단 액션 버튼 */}
-        <div className="flex gap-3 w-full pt-1 border-t border-slate-800">
+        <div className="flex gap-2 w-full pt-1 border-t border-slate-800">
+          {onGoToMainMenu && (
+            <button
+              onClick={onGoToMainMenu}
+              className="hud-btn flex-1 py-2 text-xs gap-1.5 border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 text-cyan-300 hover:text-white"
+            >
+              <Home className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} />
+              <span>메인 메뉴</span>
+            </button>
+          )}
           <button
             onClick={onOpenSettings}
             className="hud-btn flex-1 py-2 text-xs gap-1.5"

@@ -496,7 +496,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
               <div className="p-3 rounded border border-cyan-500/30 bg-cyan-950/25 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2 text-gray-200">
                   <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
-                  <span>출격 준비 완료! 헤드셋을 쓰고 아래 <b>[Quest 2 VR 배틀 출격]</b> 버튼을 누르면 시작됩니다.</span>
+                  <span>출격 준비 완료! 아래 <b>[Quest 2 VR 배틀 출격]</b> 버튼을 누르면 시작됩니다. (체험 후 <b>그립/메뉴 버튼</b>으로 VR 종료 가능)</span>
                 </div>
                 {onOpenLeaderboard && (
                   <button

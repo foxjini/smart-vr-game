@@ -14,6 +14,7 @@ import {
   Tv,
   Crosshair,
   RotateCcw,
+  Square,
 } from 'lucide-react';
 
 interface GameHUDProps {
@@ -26,6 +27,7 @@ interface GameHUDProps {
   isPlaying: boolean;
   onStartGame: () => void;
   onPauseGame: () => void;
+  onAbortGame?: () => void;
   onOpenSettings: () => void;
   onOpenLeaderboard: () => void;
   onEnterVR: () => void;
@@ -44,6 +46,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   isPlaying,
   onStartGame,
   onPauseGame,
+  onAbortGame,
   onOpenSettings,
   onOpenLeaderboard,
   onEnterVR,
@@ -211,14 +214,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </button>
 
           {isPlaying ? (
-            <button
-              id="btn-pause"
-              onClick={onPauseGame}
-              className="hud-btn hud-btn-magenta py-1.5 px-3 text-xs font-bold gap-1"
-            >
-              <Pause className="w-3 h-3 text-white" strokeWidth={2} />
-              <span>일시정지</span>
-            </button>
+            <>
+              <button
+                id="btn-pause"
+                onClick={onPauseGame}
+                className="hud-btn hud-btn-magenta py-1.5 px-2.5 text-xs font-bold gap-1"
+              >
+                <Pause className="w-3 h-3 text-white" strokeWidth={2} />
+                <span>일시정지</span>
+              </button>
+              {onAbortGame && (
+                <button
+                  id="btn-abort"
+                  onClick={onAbortGame}
+                  className="hud-btn border-red-500/60 bg-red-950/50 hover:bg-red-900/70 text-red-300 hover:text-white py-1.5 px-3 text-xs font-bold gap-1 shadow-md shadow-red-950/60 transition-all cursor-pointer"
+                  title="경기를 즉시 강제 종료하고 메인 화면으로 리셋합니다 (단축키: ESC)"
+                >
+                  <Square className="w-3 h-3 text-red-400" strokeWidth={2} />
+                  <span>경기 중단 (ESC)</span>
+                </button>
+              )}
+            </>
           ) : (
             <button
               id="btn-start"

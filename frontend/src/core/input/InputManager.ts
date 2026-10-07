@@ -56,6 +56,7 @@ export class InputManager {
   }) => void;
   public onMatchStarted?: (duration: number) => void;
   public onMatchOverBroadcast?: (data: { p1Score: number; p2Score: number; winner: string }) => void;
+  public onMatchAborted?: (message?: string) => void;
 
   // 감도 및 설정
   public sensitivity: number = 1.0;
@@ -227,6 +228,13 @@ export class InputManager {
       return;
     }
 
+    if (type === 'match_aborted') {
+      if (this.onMatchAborted) {
+        this.onMatchAborted(data.message as string);
+      }
+      return;
+    }
+
     if (type === 'system_status') {
       this.systemStatus = {
         pico_connected: Boolean(data.pico_connected),
@@ -288,6 +296,12 @@ export class InputManager {
   public sendMatchOver(p1Score: number, p2Score: number) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'match_over', p1Score, p2Score }));
+    }
+  }
+
+  public sendMatchAbort(message: string = '경기가 중단되었습니다.') {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'match_abort', message }));
     }
   }
 

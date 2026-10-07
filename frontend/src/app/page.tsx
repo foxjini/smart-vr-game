@@ -235,6 +235,23 @@ export default function ShootingArenaPage() {
     return () => window.removeEventListener('keydown', handleCamKey);
   }, [clientRole, handleSelectSpectatorCamera]);
 
+  // ESC 키로 경기 즉시 중단 또는 열린 모달 닫기
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isPlaying) {
+          handleAbortGame();
+        } else if (isSettingsOpen) {
+          setIsSettingsOpen(false);
+        } else if (isLeaderboardOpen) {
+          setIsLeaderboardOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, isSettingsOpen, isLeaderboardOpen]);
+
   // 게임 제어 함수들
   const handleStartGame = useCallback(() => {
     if (engineRef.current) {
@@ -258,6 +275,15 @@ export default function ShootingArenaPage() {
         engineRef.current.pauseGame();
       }
     }
+  }, []);
+
+  const handleAbortGame = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.abortGame('관리자 또는 사용자에 의한 경기 강제 중단');
+    }
+    setIsPlaying(false);
+    setIsGameOverOpen(false);
+    setIsMainMenuOpen(true);
   }, []);
 
   const handleJoinAsSpectator = useCallback(() => {
@@ -390,6 +416,7 @@ export default function ShootingArenaPage() {
           isPlaying={isPlaying}
           onStartGame={handleStartGame}
           onPauseGame={handlePauseGame}
+          onAbortGame={handleAbortGame}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenLeaderboard={() => handleOpenLeaderboard()}
           onEnterVR={handleEnterVR}
@@ -458,6 +485,10 @@ export default function ShootingArenaPage() {
         onRestart={handleStartGame}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onViewLeaderboard={(id) => handleOpenLeaderboard(id)}
+        onGoToMainMenu={() => {
+          setIsGameOverOpen(false);
+          setIsMainMenuOpen(true);
+        }}
       />
 
       {/* 6. Top 10 순위표 모달 */}
