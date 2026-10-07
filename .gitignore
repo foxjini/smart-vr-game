@@ -16,6 +16,7 @@ out/
 **/out/
 build/
 dist/
+*.zip
 
 # Python cache & virtual environments
 __pycache__/

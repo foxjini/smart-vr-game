@@ -5,6 +5,8 @@ export type InputMode = 'HYBRID' | 'STANDALONE' | 'WEBSOCKET_ONLY';
 export class InputManager {
   private static instance: InputManager;
   private ws: WebSocket | null = null;
+  private sessionId: string = '';
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private serverHost: string = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
   private serverPort: string = '8000';
   private requestedRole?: ClientRole;
@@ -67,6 +69,12 @@ export class InputManager {
       if (window.location.hostname) {
         this.serverHost = window.location.hostname;
       }
+      let sid = sessionStorage.getItem('cyber_strike_session_id');
+      if (!sid) {
+        sid = 's_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+        sessionStorage.setItem('cyber_strike_session_id', sid);
+      }
+      this.sessionId = sid;
       this.initKeyboardMouseListeners();
     }
   }
@@ -93,25 +101,47 @@ export class InputManager {
   public connect(url?: string, role?: ClientRole) {
     if (role !== undefined) this.requestedRole = role;
 
-    let targetUrl = url;
-    if (!targetUrl) {
-      const queryRole = this.requestedRole === 'SPECTATOR' ? '?role=spectator' : '';
-      targetUrl = `ws://${this.serverHost}:${this.serverPort}/ws/game${queryRole}`;
+    // 이미 활성 연결이 있거나 연결 중인 경우 불필요한 소켓 중복 생성 차단 (React StrictMode 이중 마운트 슬롯 오염 방지)
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
     }
 
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    let targetUrl = url;
+    if (!targetUrl) {
+      const params = new URLSearchParams();
+      if (this.requestedRole === 'SPECTATOR') params.set('role', 'spectator');
+      if (this.sessionId) params.set('sessionId', this.sessionId);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      targetUrl = `ws://${this.serverHost}:${this.serverPort}/ws/game${qs}`;
+    }
+
+    // 이전 소켓이 있다면 리스너를 완전히 끊은 후 정리
     if (this.ws) {
-      this.ws.close();
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      try { this.ws.close(); } catch {}
+      this.ws = null;
     }
 
     try {
-      this.ws = new WebSocket(targetUrl);
+      const socket = new WebSocket(targetUrl);
+      this.ws = socket;
 
-      this.ws.onopen = () => {
+      socket.onopen = () => {
+        if (this.ws !== socket) return;
         this.isConnectedToServer = true;
         this.notifyStatus();
       };
 
-      this.ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
+        if (this.ws !== socket) return;
         try {
           const data = JSON.parse(event.data);
           this.handleServerMessage(data);
@@ -120,15 +150,21 @@ export class InputManager {
         }
       };
 
-      this.ws.onclose = () => {
+      socket.onclose = () => {
+        if (this.ws !== socket) return;
         this.isConnectedToServer = false;
         this.notifyStatus();
-        setTimeout(() => {
-          if (!this.isConnectedToServer) this.connect();
-        }, 3000);
+        this.ws = null;
+        if (!this.reconnectTimer) {
+          this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            if (!this.isConnectedToServer) this.connect();
+          }, 3000);
+        }
       };
 
-      this.ws.onerror = () => {
+      socket.onerror = () => {
+        if (this.ws !== socket) return;
         this.isConnectedToServer = false;
         this.notifyStatus();
       };
@@ -138,7 +174,25 @@ export class InputManager {
     }
   }
 
+  public disconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      try { this.ws.close(); } catch {}
+      this.ws = null;
+    }
+    this.isConnectedToServer = false;
+    this.notifyStatus();
+  }
+
   public reconnect() {
+    this.disconnect();
     this.connect();
   }
 

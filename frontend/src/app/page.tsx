@@ -255,17 +255,13 @@ export default function ShootingArenaPage() {
   // 게임 제어 함수들
   const handleStartGame = useCallback(() => {
     if (engineRef.current) {
-      if (clientRole !== 'P1' && InputManager.getInstance().versusMode !== 'VERSUS_PVP') {
-        engineRef.current.setRole('P1', false);
-        setClientRole('P1');
-      }
       engineRef.current.startGame();
       setIsPlaying(true);
       setIsMainMenuOpen(false);
       setIsGameOverOpen(false);
       setIsLeaderboardOpen(false);
     }
-  }, [clientRole]);
+  }, []);
 
   const handlePauseGame = useCallback(() => {
     if (engineRef.current) {

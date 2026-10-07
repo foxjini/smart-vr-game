@@ -3,6 +3,7 @@ import json
 import logging
 from typing import Dict, Set, Optional
 from fastapi import WebSocket
+from starlette.websockets import WebSocketState
 
 logger = logging.getLogger("broadcaster")
 
@@ -10,6 +11,8 @@ class ConnectionManager:
     def __init__(self):
         # 연결된 클라이언트 풀
         self.player_clients: Dict[int, WebSocket] = {} # 1: P1 (Cyan), 2: P2 (Magenta)
+        self.player_sessions: Dict[int, str] = {} # 1: sessionId, 2: sessionId (중복 점유 방지)
+        self.session_to_player: Dict[str, int] = {} # sessionId -> 1 or 2
         self.spectator_clients: Set[WebSocket] = set() # 관람객 (Observer)
         self.game_clients: Set[WebSocket] = set() # 전체 게임 소켓 (호환성 유지)
         self.pico_clients: Set[WebSocket] = set()
@@ -24,8 +27,29 @@ class ConnectionManager:
         self.last_pico_packet = None
         self.last_source = None
 
-    async def connect_game(self, websocket: WebSocket, requested_role: Optional[str] = None):
+    def clean_dead_sockets(self):
+        """죽은 소켓이나 비정상 종료된 연결을 슬롯에서 자동 청소"""
+        # 1. 플레이어 슬롯 검사
+        for pid, ws in list(self.player_clients.items()):
+            is_alive = getattr(ws, "client_state", None) == WebSocketState.CONNECTED
+            if not is_alive:
+                logger.info(f"Auto-cleaned dead socket for Player {pid}")
+                self.game_clients.discard(ws)
+                del self.player_clients[pid]
+                old_sid = self.player_sessions.pop(pid, None)
+                if old_sid:
+                    self.session_to_player.pop(old_sid, None)
+
+        # 2. 관람객 슬롯 검사
+        for ws in list(self.spectator_clients):
+            is_alive = getattr(ws, "client_state", None) == WebSocketState.CONNECTED
+            if not is_alive:
+                self.spectator_clients.discard(ws)
+                self.game_clients.discard(ws)
+
+    async def connect_game(self, websocket: WebSocket, requested_role: Optional[str] = None, session_id: Optional[str] = None):
         await websocket.accept()
+        self.clean_dead_sockets()
         self.game_clients.add(websocket)
 
         assigned_role = "SPECTATOR"
@@ -35,20 +59,42 @@ class ConnectionManager:
             self.spectator_clients.add(websocket)
             assigned_role = "SPECTATOR"
         else:
-            # 플레이어 슬롯 배정
-            if 1 not in self.player_clients:
+            # 1. 동일한 브라우저 세션 ID가 이미 슬롯을 가지고 있는 경우 (새로고침 / 재연결 시)
+            # 기존 소켓을 새 소켓으로 안전 교체하여 '한 탭이 P1, P2 슬롯 둘 다 먹는 버그' 원천 차단
+            if session_id and session_id in self.session_to_player:
+                player_id = self.session_to_player[session_id]
+                old_ws = self.player_clients.get(player_id)
+                if old_ws and old_ws != websocket:
+                    self.game_clients.discard(old_ws)
+                    try:
+                        await old_ws.close()
+                    except Exception:
+                        pass
+                self.player_clients[player_id] = websocket
+                assigned_role = f"P{player_id}"
+            # 2. 1번 플레이어 슬롯이 비어있으면 1번 배정
+            elif 1 not in self.player_clients:
                 self.player_clients[1] = websocket
+                if session_id:
+                    self.player_sessions[1] = session_id
+                    self.session_to_player[session_id] = 1
                 assigned_role = "P1"
                 player_id = 1
+            # 3. 2번 플레이어 슬롯이 비어있으면 2번 배정
             elif 2 not in self.player_clients:
                 self.player_clients[2] = websocket
+                if session_id:
+                    self.player_sessions[2] = session_id
+                    self.session_to_player[session_id] = 2
                 assigned_role = "P2"
                 player_id = 2
+            # 4. 1번과 2번이 모두 실제로 살아있는 플레이어로 꽉 찬 경우에만 관람자 배정
             else:
                 self.spectator_clients.add(websocket)
                 assigned_role = "SPECTATOR"
+                player_id = None
 
-        logger.info(f"Client connected as {assigned_role} (PlayerId: {player_id}). Spectators: {len(self.spectator_clients)}")
+        logger.info(f"Client connected as {assigned_role} (PlayerId: {player_id}, Session: {session_id}). Active Players: {list(self.player_clients.keys())}, Spectators: {len(self.spectator_clients)}")
 
         # 1. 클라이언트에게 역할 안내
         mode = "VERSUS_PVP" if (1 in self.player_clients and 2 in self.player_clients) else "VERSUS_AI"
@@ -78,13 +124,17 @@ class ConnectionManager:
             if ws == websocket:
                 disconnected_player = pid
                 del self.player_clients[pid]
+                old_sid = self.player_sessions.pop(pid, None)
+                if old_sid:
+                    self.session_to_player.pop(old_sid, None)
                 break
 
         if disconnected_player:
-            logger.info(f"Player {disconnected_player} disconnected.")
+            logger.info(f"Player {disconnected_player} disconnected. Remaining players: {list(self.player_clients.keys())}")
         else:
             logger.info(f"Spectator disconnected. Remaining spectators: {len(self.spectator_clients)}")
 
+        self.clean_dead_sockets()
         asyncio.create_task(self.broadcast_room_state())
 
     async def broadcast_room_state(self):

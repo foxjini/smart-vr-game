@@ -100,7 +100,8 @@ async def websocket_virtual_endpoint(websocket: WebSocket):
 @app.websocket("/ws/game")
 async def websocket_game_endpoint(websocket: WebSocket):
     role = websocket.query_params.get("role")
-    await manager.connect_game(websocket, requested_role=role)
+    session_id = websocket.query_params.get("sessionId") or websocket.query_params.get("session_id")
+    await manager.connect_game(websocket, requested_role=role, session_id=session_id)
     try:
         while True:
             text_data = await websocket.receive_text()
