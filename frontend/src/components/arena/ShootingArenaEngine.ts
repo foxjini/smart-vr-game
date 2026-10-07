@@ -1476,19 +1476,17 @@ export class ShootingArenaEngine {
 
   private notifyVersusStats() {
     if (this.onVersusStatsUpdate) {
-      const p1S = this.clientRole === 'P2' ? this.p2Stats : this.stats;
-      const p2S = this.clientRole === 'P2' ? this.stats : this.p2Stats;
       this.onVersusStatsUpdate({
         mode: this.inputManager.versusMode,
         timeRemaining: this.stats.timeRemaining,
-        p1Score: p1S.score,
-        p1Hits: p1S.hits,
-        p1Combo: p1S.combo,
-        p1Accuracy: p1S.accuracy,
-        p2Score: p2S.score,
-        p2Hits: p2S.hits,
-        p2Combo: p2S.combo,
-        p2Accuracy: p2S.accuracy,
+        p1Score: this.stats.score,
+        p1Hits: this.stats.hits,
+        p1Combo: this.stats.combo,
+        p1Accuracy: this.stats.accuracy,
+        p2Score: this.p2Stats.score,
+        p2Hits: this.p2Stats.hits,
+        p2Combo: this.p2Stats.combo,
+        p2Accuracy: this.p2Stats.accuracy,
         spectatorCount: this.inputManager.spectatorCount,
       });
     }
@@ -1563,8 +1561,8 @@ export class ShootingArenaEngine {
 
   public stopGame() {
     let winner: 'P1' | 'P2' | 'DRAW' = 'DRAW';
-    const p1Score = this.clientRole === 'P2' ? this.p2Stats.score : this.stats.score;
-    const p2Score = this.clientRole === 'P2' ? this.stats.score : this.p2Stats.score;
+    const p1Score = this.stats.score;
+    const p2Score = this.p2Stats.score;
     if (p1Score > p2Score) winner = 'P1';
     else if (p2Score > p1Score) winner = 'P2';
 
@@ -1608,7 +1606,8 @@ export class ShootingArenaEngine {
     }
 
     if (this.onGameOver) {
-      this.onGameOver({ ...this.stats });
+      const myFinalStats = this.clientRole === 'P2' ? this.p2Stats : this.stats;
+      this.onGameOver({ ...myFinalStats });
     }
   }
 

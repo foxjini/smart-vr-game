@@ -75,6 +75,32 @@ export class InputManager {
         sessionStorage.setItem('cyber_strike_session_id', sid);
       }
       this.sessionId = sid;
+
+      // URL 파라미터 및 로컬 스토리지에서 고정 역할 감지
+      const urlParams = new URLSearchParams(window.location.search);
+      const r = (urlParams.get('role') || urlParams.get('mode') || '').toLowerCase();
+      let detectedRole: ClientRole | undefined = undefined;
+      if (r === 'spectator' || r === 'observer' || r === 'spec') {
+        detectedRole = 'SPECTATOR';
+      } else if (r === 'p2' || r === 'player2' || r === '2') {
+        detectedRole = 'P2';
+      } else if (r === 'p1' || r === 'player1' || r === '1') {
+        detectedRole = 'P1';
+      }
+
+      if (!detectedRole) {
+        const saved = localStorage.getItem('cyber_strike_fixed_role') as ClientRole | null;
+        if (saved === 'P1' || saved === 'P2' || saved === 'SPECTATOR') {
+          detectedRole = saved;
+        }
+      }
+
+      if (detectedRole) {
+        this.requestedRole = detectedRole;
+        this.clientRole = detectedRole;
+        localStorage.setItem('cyber_strike_fixed_role', detectedRole);
+      }
+
       this.initKeyboardMouseListeners();
     }
   }
@@ -95,11 +121,19 @@ export class InputManager {
   public setRequestedRole(role?: ClientRole) {
     if (this.requestedRole === role) return;
     this.requestedRole = role;
+    if (role && typeof window !== 'undefined') {
+      localStorage.setItem('cyber_strike_fixed_role', role);
+    }
     this.reconnect();
   }
 
   public connect(url?: string, role?: ClientRole) {
-    if (role !== undefined) this.requestedRole = role;
+    if (role !== undefined) {
+      this.requestedRole = role;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('cyber_strike_fixed_role', role);
+      }
+    }
 
     // 이미 활성 연결이 있거나 연결 중인 경우 불필요한 소켓 중복 생성 차단 (React StrictMode 이중 마운트 슬롯 오염 방지)
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
@@ -114,7 +148,13 @@ export class InputManager {
     let targetUrl = url;
     if (!targetUrl) {
       const params = new URLSearchParams();
-      if (this.requestedRole === 'SPECTATOR') params.set('role', 'spectator');
+      if (this.requestedRole === 'SPECTATOR') {
+        params.set('role', 'spectator');
+      } else if (this.requestedRole === 'P1') {
+        params.set('role', 'p1');
+      } else if (this.requestedRole === 'P2') {
+        params.set('role', 'p2');
+      }
       if (this.sessionId) params.set('sessionId', this.sessionId);
       const qs = params.toString() ? `?${params.toString()}` : '';
       targetUrl = `ws://${this.serverHost}:${this.serverPort}/ws/game${qs}`;
@@ -201,7 +241,9 @@ export class InputManager {
 
     if (type === 'client_assigned') {
       this.clientRole = data.role as ClientRole;
-      this.requestedRole = this.clientRole;
+      if (!this.requestedRole) {
+        this.requestedRole = this.clientRole;
+      }
       this.playerId = (data.playerId as number | null) ?? null;
       this.isP1Connected = Boolean(data.p1Connected);
       this.isP2Connected = Boolean(data.p2Connected);

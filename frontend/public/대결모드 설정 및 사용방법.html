@@ -713,12 +713,12 @@
        │             <span class="c-cyan">[서버 PC (1대) + 모니터]</span>          │ │             <span class="c-mag">[VR 헤드셋 플레이어 (2대)]</span>       │
        │                                              │ │                                              │
        │ • FastAPI WebSocket 서버 (포트 8000)          │ │ • <span class="c-cyan">Quest 2 #1 (선수 1)</span>                        │
-       │ • Next.js 3D 웹 게임 서버 (포트 3000)        │ │   ➔ http://<span class="dynamic-ip">192.168.0.50</span>:3000 접속         │
-       │ • <span class="c-yel">모니터 관람 중계 모드 실행 (F11 전체화면)</span>    │ │   ➔ <span class="c-cyan">P1 (Cyan) 자동 배정 & 6DoF 사격</span>        │
+       │ • Next.js 3D 웹 게임 서버 (포트 3000)        │ │   ➔ http://<span class="dynamic-ip">192.168.0.50</span>:3000/?role=p1     │
+       │ • <span class="c-yel">모니터 관람 중계 모드 실행 (F11 전체화면)</span>    │ │   ➔ <span class="c-cyan">P1 (Cyan) 1번 슬롯 영구 고정 배정!</span>       │
        │   ➔ http://localhost:3000/?role=spectator    │ │                                              │
        │   ➔ 4대 카메라(단축키 1~4) e-스포츠 중계 송출 │ │ • <span class="c-mag">Quest 2 #2 (선수 2)</span>                        │
-       │   ➔ 현장 오디오 BGM 및 한국어 보이스 브리핑  │ │   ➔ http://<span class="dynamic-ip">192.168.0.50</span>:3000 접속         │
-       │                                              │ │   ➔ <span class="c-mag">P2 (Magenta) 자동 배정 ➔ 1:1 PvP 성립!</span> │
+       │   ➔ 현장 오디오 BGM 및 한국어 보이스 브리핑  │ │   ➔ http://<span class="dynamic-ip">192.168.0.50</span>:3000/?role=p2     │
+       │                                              │ │   ➔ <span class="c-mag">P2 (Magenta) 2번 슬롯 영구 고정 배정!</span>    │
        └──────────────────────────────────────────────┘ └──────────────────────────────────────────────┘
       </div>
 
@@ -880,17 +880,18 @@ npm run dev</code></pre>
               <span class="badge badge-cyan">PLAYER 1 (CYAN)</span>
             </div>
             <p>
-              첫 번째 Quest 2의 [Meta Quest 브라우저]에서 서버 PC IP로 접속합니다:
+              첫 번째 Quest 2의 [Meta Quest 브라우저]에서 <b>1P 전용 고정 주소</b>로 접속합니다:
             </p>
             <div class="code-box">
               <div class="code-header">
                 <span>Quest 2 #1 브라우저 주소창</span>
-                <button class="copy-btn" onclick="copyDynamicUrl(this)">COPY</button>
+                <button class="copy-btn" onclick="copyDynamicUrlP1(this)">COPY</button>
               </div>
-              <pre><code class="dynamic-url">http://192.168.0.50:3000</code></pre>
+              <pre><code class="dynamic-url-p1">http://192.168.0.50:3000/?role=p1</code></pre>
             </div>
             <ul style="margin-left: 1.25rem; font-size: 0.9rem; color: var(--text-muted); line-height: 1.7;">
-              <li>서버에서 첫 번째 참가자로 인식하여 <b><code>P1 (Cyan, 청록색 아바타)</code></b> 자동 배정</li>
+              <li>주소 끝에 <code>?role=p1</code>이 지정되어 <b><code>P1 (Cyan, 청록색 아바타)</code>로 영구 고정</b> 배정</li>
+              <li>💡 <b>슬롯 꼬임 원천 차단:</b> 헤드셋을 벗어 절전(Sleep)에 들어가거나 나중에 켜져도 무조건 1P로 복귀합니다!</li>
               <li>화면 중앙의 <b>[🥽 Quest 2 VR 배틀 출격]</b> 버튼을 터치하여 사격장 진입</li>
             </ul>
           </div>
@@ -905,17 +906,17 @@ npm run dev</code></pre>
               <span class="badge badge-magenta">PLAYER 2 (MAGENTA)</span>
             </div>
             <p>
-              두 번째 Quest 2의 [Meta Quest 브라우저]에서 동일한 주소로 접속합니다:
+              두 번째 Quest 2의 [Meta Quest 브라우저]에서 <b>2P 전용 고정 주소</b>로 접속합니다:
             </p>
             <div class="code-box">
               <div class="code-header">
                 <span>Quest 2 #2 브라우저 주소창</span>
-                <button class="copy-btn" onclick="copyDynamicUrl(this)">COPY</button>
+                <button class="copy-btn" onclick="copyDynamicUrlP2(this)">COPY</button>
               </div>
-              <pre><code class="dynamic-url">http://192.168.0.50:3000</code></pre>
+              <pre><code class="dynamic-url-p2">http://192.168.0.50:3000/?role=p2</code></pre>
             </div>
             <ul style="margin-left: 1.25rem; font-size: 0.9rem; color: var(--text-muted); line-height: 1.7;">
-              <li>서버에서 두 번째 참가자로 인식하여 <b><code>P2 (Magenta, 자홍색 아바타)</code></b> 자동 배정</li>
+              <li>주소 끝에 <code>?role=p2</code>가 지정되어 1번 슬롯이 비어있더라도 <b>무조건 <code>P2 (Magenta, 자홍색 아바타)</code>로 영구 고정</b> 배정!</li>
               <li><b>1P와 2P가 모두 온라인이 되면서 시스템 전체가 <code>[🟢 1:1 실시간 PvP 대결 모드]</code> 로 자동 전환!</b></li>
               <li>화면 중앙의 <b>[🥽 Quest 2 VR 배틀 출격]</b> 버튼을 터치하여 사격장 진입</li>
             </ul>
@@ -1053,6 +1054,12 @@ npm run dev</code></pre>
       document.querySelectorAll('.dynamic-url').forEach(el => {
         el.textContent = `http://${cleanIp}:3000`;
       });
+      document.querySelectorAll('.dynamic-url-p1').forEach(el => {
+        el.textContent = `http://${cleanIp}:3000/?role=p1`;
+      });
+      document.querySelectorAll('.dynamic-url-p2').forEach(el => {
+        el.textContent = `http://${cleanIp}:3000/?role=p2`;
+      });
 
       // 3. flags 코드 치환
       const flagsCode = document.getElementById('dynamicFlagsCode');
@@ -1084,6 +1091,20 @@ npm run dev</code></pre>
       const ip = document.getElementById('ipInput').value.trim() || '192.168.0.50';
       navigator.clipboard.writeText(`http://${ip}:3000`).then(() => {
         showToast(`Quest 2 접속 주소(http://${ip}:3000)가 복사되었습니다!`);
+      });
+    }
+
+    function copyDynamicUrlP1(btn) {
+      const ip = document.getElementById('ipInput').value.trim() || '192.168.0.50';
+      navigator.clipboard.writeText(`http://${ip}:3000/?role=p1`).then(() => {
+        showToast(`Quest 2 #1 [P1 고정] 접속 주소(http://${ip}:3000/?role=p1)가 복사되었습니다!`);
+      });
+    }
+
+    function copyDynamicUrlP2(btn) {
+      const ip = document.getElementById('ipInput').value.trim() || '192.168.0.50';
+      navigator.clipboard.writeText(`http://${ip}:3000/?role=p2`).then(() => {
+        showToast(`Quest 2 #2 [P2 고정] 접속 주소(http://${ip}:3000/?role=p2)가 복사되었습니다!`);
       });
     }
 

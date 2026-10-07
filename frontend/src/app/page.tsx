@@ -39,9 +39,13 @@ export default function ShootingArenaPage() {
   const [clientRole, setClientRole] = useState<ClientRole>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('mode') === 'observer' || urlParams.get('role') === 'spectator') {
-        return 'SPECTATOR';
-      }
+      const r = (urlParams.get('role') || urlParams.get('mode') || '').toLowerCase();
+      if (r === 'spectator' || r === 'observer' || r === 'spec') return 'SPECTATOR';
+      if (r === 'p2' || r === 'player2' || r === '2') return 'P2';
+      if (r === 'p1' || r === 'player1' || r === '1') return 'P1';
+
+      const saved = localStorage.getItem('cyber_strike_fixed_role') as ClientRole | null;
+      if (saved === 'P1' || saved === 'P2' || saved === 'SPECTATOR') return saved;
     }
     return 'P1';
   });
@@ -193,19 +197,37 @@ export default function ShootingArenaPage() {
       setIsP2Connected(Boolean(state.p2Connected));
     };
 
-    // URL 쿼리에 ?mode=observer 또는 ?role=spectator가 있는 경우 자동 관람 모드
+    // URL 쿼리 또는 저장된 역할에 따라 자동 역할 배정 및 소켓 연결
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('mode') === 'observer' || urlParams.get('role') === 'spectator') {
-        engine.setRole('SPECTATOR');
+      const rParam = (urlParams.get('role') || urlParams.get('mode') || '').toLowerCase();
+      let initRole: ClientRole = 'P1';
+      if (rParam === 'spectator' || rParam === 'observer' || rParam === 'spec') {
+        initRole = 'SPECTATOR';
+      } else if (rParam === 'p2' || rParam === 'player2' || rParam === '2') {
+        initRole = 'P2';
+      } else if (rParam === 'p1' || rParam === 'player1' || rParam === '1') {
+        initRole = 'P1';
+      } else {
+        const saved = localStorage.getItem('cyber_strike_fixed_role') as ClientRole | null;
+        if (saved === 'P1' || saved === 'P2' || saved === 'SPECTATOR') {
+          initRole = saved;
+        }
+      }
+
+      setClientRole(initRole);
+      engine.setRole(initRole);
+
+      if (initRole === 'SPECTATOR') {
         engine.setSpectatorCameraMode('STADIUM');
+        inputMgr.connect(undefined, 'SPECTATOR');
         setTimeout(() => {
           if (!inputMgr.isP1Connected && engineRef.current && !engineRef.current.isPlaying) {
             engineRef.current.startGame();
           }
         }, 400);
       } else {
-        inputMgr.connect();
+        inputMgr.connect(undefined, initRole);
       }
     }
 
@@ -282,20 +304,25 @@ export default function ShootingArenaPage() {
     setIsMainMenuOpen(true);
   }, []);
 
-  const handleJoinAsSpectator = useCallback(() => {
-    setClientRole('SPECTATOR');
+  const handleSelectRole = useCallback((role: ClientRole) => {
+    setClientRole(role);
+    InputManager.getInstance().setRequestedRole(role);
     if (engineRef.current) {
-      engineRef.current.setRole('SPECTATOR');
-      engineRef.current.setSpectatorCameraMode('STADIUM');
-      if (!InputManager.getInstance().isP1Connected && !engineRef.current.isPlaying) {
-        engineRef.current.startGame();
+      engineRef.current.setRole(role, true);
+      if (role === 'SPECTATOR') {
+        engineRef.current.setSpectatorCameraMode('STADIUM');
       }
-    } else {
-      InputManager.getInstance().setRequestedRole('SPECTATOR');
+    }
+  }, []);
+
+  const handleJoinAsSpectator = useCallback(() => {
+    handleSelectRole('SPECTATOR');
+    if (engineRef.current && !InputManager.getInstance().isP1Connected && !engineRef.current.isPlaying) {
+      engineRef.current.startGame();
     }
     setSpectatorCameraMode('STADIUM');
     setIsMainMenuOpen(false);
-  }, []);
+  }, [handleSelectRole]);
 
   const handleSelectTheme = useCallback((theme: ThemeType) => {
     setCurrentTheme(theme);
@@ -467,6 +494,8 @@ export default function ShootingArenaPage() {
         onToggleVoice={handleToggleVoice}
         voiceVolume={voiceVolume}
         onUpdateVoiceVolume={handleUpdateVoiceVolume}
+        clientRole={clientRole}
+        onSelectRole={handleSelectRole}
       />
 
       {/* 5. 게임오버 결과 모달 (1:1 스탯 비교) */}

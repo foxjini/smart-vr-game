@@ -55,12 +55,49 @@ class ConnectionManager:
         assigned_role = "SPECTATOR"
         player_id = None
 
-        if requested_role == "spectator":
+        req = (requested_role or "").strip().lower()
+
+        # [전시회 모드] 역할 명시적 고정 처리
+        if req in ("spectator", "observer", "spec"):
+            # 관람 중계 모니터 요청: 플레이어 슬롯이 비어있어도 절대 가로채지 않고 무조건 관람객으로 배정
             self.spectator_clients.add(websocket)
             assigned_role = "SPECTATOR"
+            player_id = None
+
+        elif req in ("p1", "1", "player1"):
+            # 1P 전용 VR 헤드셋 요청: 무조건 1번 슬롯에 고정 배정 (이전 소켓 자동 교체)
+            old_ws = self.player_clients.get(1)
+            if old_ws and old_ws != websocket:
+                self.game_clients.discard(old_ws)
+                try:
+                    await old_ws.close()
+                except Exception:
+                    pass
+            self.player_clients[1] = websocket
+            if session_id:
+                self.player_sessions[1] = session_id
+                self.session_to_player[session_id] = 1
+            assigned_role = "P1"
+            player_id = 1
+
+        elif req in ("p2", "2", "player2"):
+            # 2P 전용 VR 헤드셋 요청: 1번 슬롯이 비어있더라도 절대 1번으로 가지 않고 무조건 2번 슬롯에 고정 배정!
+            old_ws = self.player_clients.get(2)
+            if old_ws and old_ws != websocket:
+                self.game_clients.discard(old_ws)
+                try:
+                    await old_ws.close()
+                except Exception:
+                    pass
+            self.player_clients[2] = websocket
+            if session_id:
+                self.player_sessions[2] = session_id
+                self.session_to_player[session_id] = 2
+            assigned_role = "P2"
+            player_id = 2
+
         else:
-            # 1. 동일한 브라우저 세션 ID가 이미 슬롯을 가지고 있는 경우 (새로고침 / 재연결 시)
-            # 기존 소켓을 새 소켓으로 안전 교체하여 '한 탭이 P1, P2 슬롯 둘 다 먹는 버그' 원천 차단
+            # 역할 미지정 일반 접속 (선착순 자동 배정 폴백)
             if session_id and session_id in self.session_to_player:
                 player_id = self.session_to_player[session_id]
                 old_ws = self.player_clients.get(player_id)
@@ -72,7 +109,6 @@ class ConnectionManager:
                         pass
                 self.player_clients[player_id] = websocket
                 assigned_role = f"P{player_id}"
-            # 2. 1번 플레이어 슬롯이 비어있으면 1번 배정
             elif 1 not in self.player_clients:
                 self.player_clients[1] = websocket
                 if session_id:
@@ -80,7 +116,6 @@ class ConnectionManager:
                     self.session_to_player[session_id] = 1
                 assigned_role = "P1"
                 player_id = 1
-            # 3. 2번 플레이어 슬롯이 비어있으면 2번 배정
             elif 2 not in self.player_clients:
                 self.player_clients[2] = websocket
                 if session_id:
@@ -88,7 +123,6 @@ class ConnectionManager:
                     self.session_to_player[session_id] = 2
                 assigned_role = "P2"
                 player_id = 2
-            # 4. 1번과 2번이 모두 실제로 살아있는 플레이어로 꽉 찬 경우에만 관람자 배정
             else:
                 self.spectator_clients.add(websocket)
                 assigned_role = "SPECTATOR"
@@ -230,6 +264,54 @@ class ConnectionManager:
 
         elif msg_type == "set_difficulty":
             self.difficulty = data.get("difficulty", "normal")
+            await self.broadcast_room_state()
+
+        elif msg_type == "request_role_change":
+            req = (data.get("role") or "").strip().lower()
+            sid = data.get("sessionId")
+            # 기존 슬롯에서 제거
+            for pid, ws in list(self.player_clients.items()):
+                if ws == websocket:
+                    del self.player_clients[pid]
+                    self.player_sessions.pop(pid, None)
+            self.spectator_clients.discard(websocket)
+
+            assigned_role = "SPECTATOR"
+            player_id = None
+            if req in ("p1", "1", "player1"):
+                self.player_clients[1] = websocket
+                if sid:
+                    self.player_sessions[1] = sid
+                    self.session_to_player[sid] = 1
+                assigned_role = "P1"
+                player_id = 1
+            elif req in ("p2", "2", "player2"):
+                self.player_clients[2] = websocket
+                if sid:
+                    self.player_sessions[2] = sid
+                    self.session_to_player[sid] = 2
+                assigned_role = "P2"
+                player_id = 2
+            else:
+                self.spectator_clients.add(websocket)
+                assigned_role = "SPECTATOR"
+                player_id = None
+
+            logger.info(f"Role changed for client to {assigned_role} (PlayerId: {player_id})")
+            mode = "VERSUS_PVP" if (1 in self.player_clients and 2 in self.player_clients) else "VERSUS_AI"
+            await websocket.send_json({
+                "type": "client_assigned",
+                "role": assigned_role,
+                "playerId": player_id,
+                "p1Connected": 1 in self.player_clients,
+                "p2Connected": 2 in self.player_clients,
+                "spectatorCount": len(self.spectator_clients),
+                "mode": mode,
+                "difficulty": self.difficulty,
+                "p1Score": self.p1_score,
+                "p2Score": self.p2_score,
+                "isMatchActive": self.is_match_active
+            })
             await self.broadcast_room_state()
 
         elif msg_type == "match_over":

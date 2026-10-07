@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ThemeType, TargetShape, Difficulty, SoundPresetType } from '@/types';
+import { ThemeType, TargetShape, Difficulty, SoundPresetType, ClientRole } from '@/types';
 import { VoiceManager } from '@/core/audio/VoiceManager';
 import { SoundManager } from '@/core/audio/SoundManager';
 import {
@@ -15,6 +15,9 @@ import {
   Server,
   Check,
   Zap,
+  User,
+  Tv,
+  Eye,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -38,6 +41,8 @@ interface SettingsModalProps {
   onToggleVoice: (enabled: boolean) => void;
   voiceVolume: number;
   onUpdateVoiceVolume: (vol: number) => void;
+  clientRole?: ClientRole;
+  onSelectRole?: (role: ClientRole) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -61,6 +66,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleVoice,
   voiceVolume,
   onUpdateVoiceVolume,
+  clientRole = 'P1',
+  onSelectRole,
 }) => {
   const [hostInput, setHostInput] = useState(serverHost);
 
@@ -290,6 +297,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </div>
+        </div>
+
+        {/* 6. 전시회 전용 기기 역할 고정 설정 */}
+        <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-3">
+          <div className="flex justify-between items-center">
+            <span className="text-[11px] text-cyan-400 font-mono font-bold flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-cyan-400" />
+              <span>// 전시회 기기 역할 고정 (Device Role Lock)</span>
+            </span>
+            <span className="text-[10px] text-gray-400">
+              현재 기기: <b className="text-white font-mono">{clientRole === 'P1' ? '선수 1 (시안)' : clientRole === 'P2' ? '선수 2 (마젠타)' : '관람 중계자'}</b>
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => onSelectRole?.('P1')}
+              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                clientRole === 'P1'
+                  ? 'border-cyan-400 bg-cyan-950/60 text-cyan-300 font-bold shadow-[0_0_12px_rgba(0,240,255,0.3)]'
+                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
+              }`}
+            >
+              <span className="text-xs font-bold text-cyan-400">선수 1 (1P)</span>
+              <span className="text-[10px] text-gray-400 font-mono">시안 블루 아바타</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectRole?.('P2')}
+              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                clientRole === 'P2'
+                  ? 'border-pink-500 bg-pink-950/60 text-pink-300 font-bold shadow-[0_0_12px_rgba(255,0,85,0.3)]'
+                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
+              }`}
+            >
+              <span className="text-xs font-bold text-pink-400">선수 2 (2P)</span>
+              <span className="text-[10px] text-gray-400 font-mono">마젠타 핑크 아바타</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectRole?.('SPECTATOR')}
+              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                clientRole === 'SPECTATOR'
+                  ? 'border-yellow-400 bg-yellow-950/60 text-yellow-300 font-bold shadow-[0_0_12px_rgba(255,230,0,0.3)]'
+                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
+              }`}
+            >
+              <span className="text-xs font-bold text-yellow-400">관람 중계 (모니터)</span>
+              <span className="text-[10px] text-gray-400 font-mono">4단 방송 카메라</span>
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-400 leading-relaxed">
+            💡 기기 역할을 선택하면 <b>브라우저에 영구 고정</b>되어, 헤드셋 절전(Sleep) 후 재연결되거나 새로고침 시에도 역할이 절대 바뀌지 않습니다.
+          </p>
         </div>
 
         {/* 닫기 버튼 */}
