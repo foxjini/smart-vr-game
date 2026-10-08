@@ -60,41 +60,99 @@ class ConnectionManager:
         # [전시회 모드] 역할 명시적 고정 처리
         if req in ("spectator", "observer", "spec"):
             # 관람 중계 모니터 요청: 플레이어 슬롯이 비어있어도 절대 가로채지 않고 무조건 관람객으로 배정
+            # 기존 플레이어 슬롯에서 제거
+            for pid, ws in list(self.player_clients.items()):
+                if ws == websocket:
+                    del self.player_clients[pid]
+            if session_id:
+                old_pid = self.session_to_player.pop(session_id, None)
+                if old_pid:
+                    self.player_sessions.pop(old_pid, None)
             self.spectator_clients.add(websocket)
             assigned_role = "SPECTATOR"
             player_id = None
 
         elif req in ("p1", "1", "player1"):
-            # 1P 전용 VR 헤드셋 요청: 무조건 1번 슬롯에 고정 배정 (이전 소켓 자동 교체)
+            # 1P 전용 VR 헤드셋 요청: 1번 슬롯 배정 (동일 세션 재연결 시 이전 소켓 교체, 타 세션 사용 중이면 2번/관람객 폴백)
+            if self.player_clients.get(2) == websocket:
+                del self.player_clients[2]
+            if session_id and self.player_sessions.get(2) == session_id:
+                self.player_sessions.pop(2, None)
+            self.spectator_clients.discard(websocket)
+
             old_ws = self.player_clients.get(1)
-            if old_ws and old_ws != websocket:
-                self.game_clients.discard(old_ws)
-                try:
-                    await old_ws.close()
-                except Exception:
-                    pass
-            self.player_clients[1] = websocket
-            if session_id:
-                self.player_sessions[1] = session_id
-                self.session_to_player[session_id] = 1
-            assigned_role = "P1"
-            player_id = 1
+            old_sid = self.player_sessions.get(1)
+            old_alive = old_ws and getattr(old_ws, "client_state", None) == WebSocketState.CONNECTED
+
+            if old_alive and session_id and old_sid and session_id != old_sid:
+                # 다른 기기가 이미 1번 슬롯을 활발히 사용 중! 2번 슬롯이 비었으면 2번으로, 아니면 관람객으로 스마트 배정
+                if 2 not in self.player_clients or getattr(self.player_clients[2], "client_state", None) != WebSocketState.CONNECTED:
+                    logger.info(f"Slot 1 is active by session {old_sid}. Diverting new session {session_id} to P2.")
+                    self.player_clients[2] = websocket
+                    if session_id:
+                        self.player_sessions[2] = session_id
+                        self.session_to_player[session_id] = 2
+                    assigned_role = "P2"
+                    player_id = 2
+                else:
+                    logger.info(f"Both player slots active. Assigning session {session_id} to SPECTATOR.")
+                    self.spectator_clients.add(websocket)
+                    assigned_role = "SPECTATOR"
+                    player_id = None
+            else:
+                if old_ws and old_ws != websocket:
+                    self.game_clients.discard(old_ws)
+                    try:
+                        await old_ws.close()
+                    except Exception:
+                        pass
+                self.player_clients[1] = websocket
+                if session_id:
+                    self.player_sessions[1] = session_id
+                    self.session_to_player[session_id] = 1
+                assigned_role = "P1"
+                player_id = 1
 
         elif req in ("p2", "2", "player2"):
-            # 2P 전용 VR 헤드셋 요청: 1번 슬롯이 비어있더라도 절대 1번으로 가지 않고 무조건 2번 슬롯에 고정 배정!
+            # 2P 전용 VR 헤드셋 요청: 2번 슬롯 배정
+            if self.player_clients.get(1) == websocket:
+                del self.player_clients[1]
+            if session_id and self.player_sessions.get(1) == session_id:
+                self.player_sessions.pop(1, None)
+            self.spectator_clients.discard(websocket)
+
             old_ws = self.player_clients.get(2)
-            if old_ws and old_ws != websocket:
-                self.game_clients.discard(old_ws)
-                try:
-                    await old_ws.close()
-                except Exception:
-                    pass
-            self.player_clients[2] = websocket
-            if session_id:
-                self.player_sessions[2] = session_id
-                self.session_to_player[session_id] = 2
-            assigned_role = "P2"
-            player_id = 2
+            old_sid = self.player_sessions.get(2)
+            old_alive = old_ws and getattr(old_ws, "client_state", None) == WebSocketState.CONNECTED
+
+            if old_alive and session_id and old_sid and session_id != old_sid:
+                # 다른 기기가 이미 2번 슬롯을 활발히 사용 중! 1번 슬롯이 비었으면 1번으로, 아니면 관람객으로 스마트 배정
+                if 1 not in self.player_clients or getattr(self.player_clients[1], "client_state", None) != WebSocketState.CONNECTED:
+                    logger.info(f"Slot 2 is active by session {old_sid}. Diverting new session {session_id} to P1.")
+                    self.player_clients[1] = websocket
+                    if session_id:
+                        self.player_sessions[1] = session_id
+                        self.session_to_player[session_id] = 1
+                    assigned_role = "P1"
+                    player_id = 1
+                else:
+                    logger.info(f"Both player slots active. Assigning session {session_id} to SPECTATOR.")
+                    self.spectator_clients.add(websocket)
+                    assigned_role = "SPECTATOR"
+                    player_id = None
+            else:
+                if old_ws and old_ws != websocket:
+                    self.game_clients.discard(old_ws)
+                    try:
+                        await old_ws.close()
+                    except Exception:
+                        pass
+                self.player_clients[2] = websocket
+                if session_id:
+                    self.player_sessions[2] = session_id
+                    self.session_to_player[session_id] = 2
+                assigned_role = "P2"
+                player_id = 2
 
         else:
             # 역할 미지정 일반 접속 (선착순 자동 배정 폴백)

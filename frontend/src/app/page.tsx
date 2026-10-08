@@ -57,8 +57,10 @@ export default function ShootingArenaPage() {
     spectator_count: 0,
   });
   const [serverHost, setServerHost] = useState<string>(() => {
-    if (typeof window !== 'undefined' && window.location.hostname) {
-      return window.location.hostname;
+    if (typeof window !== 'undefined') {
+      const savedHost = localStorage.getItem('cyber_strike_server_host');
+      if (savedHost) return savedHost;
+      if (window.location.hostname) return window.location.hostname;
     }
     return 'localhost';
   });
@@ -185,10 +187,19 @@ export default function ShootingArenaPage() {
       setIsP2Connected(inputMgr.isP2Connected);
     };
 
-    inputMgr.onClientAssigned = (role) => {
+    const origClientAssigned = inputMgr.onClientAssigned;
+    inputMgr.onClientAssigned = (role, playerId) => {
+      if (origClientAssigned) origClientAssigned(role, playerId);
       setClientRole(role);
-      engine.clientRole = role;
+      engine.setRole(role);
       setIsP2Connected(inputMgr.isP2Connected);
+
+      // 관람 중계 모니터는 입장 즉시 메뉴를 닫고 스타디움 경기장 뷰를 활성화
+      if (role === 'SPECTATOR') {
+        setIsMainMenuOpen(false);
+        setSpectatorCameraMode('STADIUM');
+        engine.setSpectatorCameraMode('STADIUM');
+      }
     };
 
     const origRoomStateChange = inputMgr.onRoomStateChange;
@@ -201,7 +212,7 @@ export default function ShootingArenaPage() {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const rParam = (urlParams.get('role') || urlParams.get('mode') || '').toLowerCase();
-      let initRole: ClientRole = 'P1';
+      let initRole: ClientRole | undefined = undefined;
       if (rParam === 'spectator' || rParam === 'observer' || rParam === 'spec') {
         initRole = 'SPECTATOR';
       } else if (rParam === 'p2' || rParam === 'player2' || rParam === '2') {
@@ -215,19 +226,16 @@ export default function ShootingArenaPage() {
         }
       }
 
-      setClientRole(initRole);
-      engine.setRole(initRole);
-
-      if (initRole === 'SPECTATOR') {
-        engine.setSpectatorCameraMode('STADIUM');
-        inputMgr.connect(undefined, 'SPECTATOR');
-        setTimeout(() => {
-          if (!inputMgr.isP1Connected && engineRef.current && !engineRef.current.isPlaying) {
-            engineRef.current.startGame();
-          }
-        }, 400);
-      } else {
+      if (initRole) {
+        setClientRole(initRole);
+        engine.setRole(initRole);
+        if (initRole === 'SPECTATOR') {
+          engine.setSpectatorCameraMode('STADIUM');
+        }
         inputMgr.connect(undefined, initRole);
+      } else {
+        // 역할 미지정: 서버의 선착순 자동 배정(P1 -> P2 -> SPECTATOR)에 위임!
+        inputMgr.connect();
       }
     }
 
@@ -317,9 +325,6 @@ export default function ShootingArenaPage() {
 
   const handleJoinAsSpectator = useCallback(() => {
     handleSelectRole('SPECTATOR');
-    if (engineRef.current && !InputManager.getInstance().isP1Connected && !engineRef.current.isPlaying) {
-      engineRef.current.startGame();
-    }
     setSpectatorCameraMode('STADIUM');
     setIsMainMenuOpen(false);
   }, [handleSelectRole]);
@@ -401,7 +406,6 @@ export default function ShootingArenaPage() {
     const threeVRBtn = document.getElementById('three-vr-button');
     if (threeVRBtn) {
       threeVRBtn.click();
-      handleStartGame();
       return;
     }
 
@@ -412,7 +416,6 @@ export default function ShootingArenaPage() {
           optionalFeatures: ['local-floor', 'bounded-floor'],
         });
         await renderer.xr.setSession(session);
-        handleStartGame();
       } catch (err) {
         console.error('Failed to enter WebXR:', err);
         handleStartGame();

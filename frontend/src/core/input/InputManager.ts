@@ -66,7 +66,10 @@ export class InputManager {
 
   private constructor() {
     if (typeof window !== 'undefined') {
-      if (window.location.hostname) {
+      const savedHost = localStorage.getItem('cyber_strike_server_host');
+      if (savedHost) {
+        this.serverHost = savedHost;
+      } else if (window.location.hostname) {
         this.serverHost = window.location.hostname;
       }
       let sid = sessionStorage.getItem('cyber_strike_session_id');
@@ -82,10 +85,13 @@ export class InputManager {
       let detectedRole: ClientRole | undefined = undefined;
       if (r === 'spectator' || r === 'observer' || r === 'spec') {
         detectedRole = 'SPECTATOR';
+        localStorage.setItem('cyber_strike_fixed_role', 'SPECTATOR');
       } else if (r === 'p2' || r === 'player2' || r === '2') {
         detectedRole = 'P2';
+        localStorage.setItem('cyber_strike_fixed_role', 'P2');
       } else if (r === 'p1' || r === 'player1' || r === '1') {
         detectedRole = 'P1';
+        localStorage.setItem('cyber_strike_fixed_role', 'P1');
       }
 
       if (!detectedRole) {
@@ -98,7 +104,6 @@ export class InputManager {
       if (detectedRole) {
         this.requestedRole = detectedRole;
         this.clientRole = detectedRole;
-        localStorage.setItem('cyber_strike_fixed_role', detectedRole);
       }
 
       this.initKeyboardMouseListeners();
@@ -115,6 +120,9 @@ export class InputManager {
   public setServerHost(host: string, port: string = '8000') {
     this.serverHost = host;
     this.serverPort = port;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('cyber_strike_server_host', host);
+    }
     this.reconnect();
   }
 
@@ -157,7 +165,8 @@ export class InputManager {
       }
       if (this.sessionId) params.set('sessionId', this.sessionId);
       const qs = params.toString() ? `?${params.toString()}` : '';
-      targetUrl = `ws://${this.serverHost}:${this.serverPort}/ws/game${qs}`;
+      const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      targetUrl = `${protocol}//${this.serverHost}:${this.serverPort}/ws/game${qs}`;
     }
 
     // 이전 소켓이 있다면 리스너를 완전히 끊은 후 정리
@@ -241,9 +250,6 @@ export class InputManager {
 
     if (type === 'client_assigned') {
       this.clientRole = data.role as ClientRole;
-      if (!this.requestedRole) {
-        this.requestedRole = this.clientRole;
-      }
       this.playerId = (data.playerId as number | null) ?? null;
       this.isP1Connected = Boolean(data.p1Connected);
       this.isP2Connected = Boolean(data.p2Connected);
@@ -251,9 +257,6 @@ export class InputManager {
       this.versusMode = (data.mode as 'VERSUS_PVP' | 'VERSUS_AI') || 'VERSUS_AI';
       if (this.onClientAssigned) {
         this.onClientAssigned(this.clientRole, this.playerId);
-      }
-      if (data.isMatchActive && this.clientRole === 'SPECTATOR' && this.onMatchStarted) {
-        this.onMatchStarted(60);
       }
       return;
     }
@@ -266,9 +269,6 @@ export class InputManager {
       this.systemStatus.spectator_count = this.spectatorCount;
       if (this.onRoomStateChange) {
         this.onRoomStateChange(data);
-      }
-      if (data.isMatchActive && this.clientRole === 'SPECTATOR' && this.onMatchStarted) {
-        this.onMatchStarted(60);
       }
       this.notifyStatus();
       return;

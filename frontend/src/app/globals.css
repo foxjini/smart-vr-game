@@ -3,14 +3,16 @@
 
 :root {
   --bg-dark: #030712;
-  --hud-bg: rgba(4, 9, 20, 0.38);
-  --hud-bg-subtle: rgba(6, 12, 26, 0.25);
-  --hud-border: rgba(0, 240, 255, 0.2);
-  --hud-border-hover: rgba(0, 240, 255, 0.7);
-  --hud-border-subtle: rgba(100, 116, 139, 0.25);
+  --hud-bg: rgba(6, 12, 26, 0.45);
+  --hud-bg-subtle: rgba(8, 16, 32, 0.32);
+  --hud-border: rgba(0, 240, 255, 0.28);
+  --hud-border-hover: rgba(0, 240, 255, 0.85);
+  --hud-border-subtle: rgba(148, 163, 184, 0.2);
   --cyan: #00f0ff;
+  --cyan-glow: rgba(0, 240, 255, 0.4);
   --cyan-dim: rgba(0, 240, 255, 0.12);
   --magenta: #ff0055;
+  --magenta-glow: rgba(255, 0, 85, 0.4);
   --amber: #ffaa00;
   --green: #00ffaa;
   
@@ -18,6 +20,113 @@
   --font-tech: 'Rajdhani', 'Noto Sans KR', sans-serif;
   --font-mono: 'Share Tech Mono', 'JetBrains Mono', 'Noto Sans KR', monospace;
   --font-korean: 'Noto Sans KR', sans-serif;
+
+  /* Cyber Glassmorphism 핵심 토큰 */
+  --glass-bg-base: linear-gradient(135deg, rgba(8, 16, 32, 0.72) 0%, rgba(4, 9, 22, 0.52) 100%);
+  --glass-bg-subtle: linear-gradient(135deg, rgba(12, 22, 42, 0.5) 0%, rgba(6, 12, 26, 0.35) 100%);
+  --glass-bg-card: linear-gradient(140deg, rgba(10, 18, 36, 0.82) 0%, rgba(3, 7, 16, 0.72) 100%);
+  --glass-blur: blur(20px) saturate(190%) contrast(105%);
+  --glass-border-specular: inset 0 1px 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 1px 0 rgba(0, 240, 255, 0.1);
+  --glass-shadow-depth: 0 20px 50px -10px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 240, 255, 0.08);
+}
+
+/* =================================================================== */
+/* Cyber Glassmorphism 코어 유틸리티 */
+/* =================================================================== */
+.cyber-glass {
+  background: var(--glass-bg-base);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--glass-shadow-depth), var(--glass-border-specular);
+  border-radius: 8px;
+  position: relative;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cyber-glass:hover {
+  border-color: var(--hud-border-hover);
+  box-shadow: var(--glass-shadow-depth), var(--glass-border-specular), 0 0 25px rgba(0, 240, 255, 0.2);
+}
+
+/* 1P Cyan 테마 글래스 */
+.cyber-glass-p1 {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.08) 0%, rgba(4, 9, 22, 0.65) 100%);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(0, 240, 255, 0.45);
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.25), 0 0 20px rgba(0, 240, 255, 0.15);
+  border-radius: 8px;
+}
+
+/* 2P Magenta 테마 글래스 */
+.cyber-glass-p2 {
+  background: linear-gradient(135deg, rgba(255, 0, 85, 0.08) 0%, rgba(4, 9, 22, 0.65) 100%);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 0, 85, 0.45);
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.25), 0 0 20px rgba(255, 0, 85, 0.15);
+  border-radius: 8px;
+}
+
+/* 관람객 Amber 테마 글래스 */
+.cyber-glass-spec {
+  background: linear-gradient(135deg, rgba(255, 170, 0, 0.08) 0%, rgba(4, 9, 22, 0.65) 100%);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 170, 0, 0.45);
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.25), 0 0 20px rgba(255, 170, 0, 0.15);
+  border-radius: 8px;
+}
+
+/* 글래스 버튼 (유리 표면 림라이트 + 호버 시 광택 쉬머) */
+.glass-btn {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  padding: 0.55rem 1.15rem;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(0, 240, 255, 0.04) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 4px 15px rgba(0, 0, 0, 0.4);
+  color: #e2e8f0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease, color 0.15s ease;
+  position: relative;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.glass-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transition: left 0.5s ease;
+}
+
+.glass-btn:hover::before {
+  left: 100%;
+}
+
+.glass-btn:hover {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.22) 0%, rgba(0, 240, 255, 0.1) 100%);
+  border-color: var(--cyan);
+  color: #ffffff;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.35), 0 0 20px var(--cyan-glow), 0 6px 20px rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px) scale(1.02);
+}
+
+.glass-btn:active {
+  transform: translateY(1.5px) scale(0.97);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition-duration: 0.08s;
 }
 
 * {
@@ -126,21 +235,23 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all 0.18s ease-out;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
   position: relative;
+  will-change: transform;
 }
 
 .hud-btn:hover {
   border-color: var(--cyan);
   background: rgba(0, 240, 255, 0.18);
   color: #ffffff;
-  box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
-  transform: translateY(-1px);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
+  transform: translateY(-2px) scale(1.02);
 }
 
 .hud-btn:active {
-  transform: translateY(1px);
+  transform: translateY(1.5px) scale(0.97);
   background: rgba(0, 240, 255, 0.3);
+  transition-duration: 0.08s;
 }
 
 .hud-btn-primary {
@@ -307,15 +418,28 @@ html, body {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: radial-gradient(circle at center, rgba(3, 7, 18, 0.15) 0%, rgba(2, 5, 12, 0.65) 100%);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: radial-gradient(circle at 50% 40%, rgba(6, 14, 30, 0.45) 0%, rgba(2, 5, 12, 0.8) 100%);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
   z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
   pointer-events: auto !important;
+}
+
+/* 글래스 텍스처 에칭 (스캔라인 및 전술 그리드) */
+.glass-scanlines {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 100% 4px;
+}
+
+.glass-grid {
+  background-image: 
+    linear-gradient(rgba(0, 240, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 /* 화면 중앙 정밀 HUD 조준선 (Crosshair Reticle) */
@@ -391,3 +515,174 @@ html, body {
 .animate-fadeIn {
   animation: fadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* =================================================================== */
+/* AAA Grade Micro-Detail Tokens & Kinetic Animations                 */
+/* =================================================================== */
+
+/* 1. 정밀 1px 코너 꺾쇠 브래킷 (4-Corner Brackets) */
+.hud-bracket-box-all {
+  position: relative;
+}
+.hud-bracket-box-all::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  height: 8px;
+  border-top: 1.5px solid var(--bracket-color, var(--cyan));
+  border-left: 1.5px solid var(--bracket-color, var(--cyan));
+  border-right: 1.5px solid var(--bracket-color, var(--cyan));
+  pointer-events: none;
+  z-index: 10;
+}
+.hud-bracket-box-all::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: -1px;
+  right: -1px;
+  height: 8px;
+  border-bottom: 1.5px solid var(--bracket-color, var(--cyan));
+  border-left: 1.5px solid var(--bracket-color, var(--cyan));
+  border-right: 1.5px solid var(--bracket-color, var(--cyan));
+  pointer-events: none;
+  z-index: 10;
+}
+
+.bracket-cyan { --bracket-color: #00f0ff; }
+.bracket-magenta { --bracket-color: #ff0055; }
+.bracket-amber { --bracket-color: #ffaa00; }
+.bracket-dim { --bracket-color: rgba(148, 163, 184, 0.35); }
+
+/* 2. 가상 텔레메트리 데이터 스탬프 (Data Typography) */
+.hud-data-stamp {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  color: rgba(148, 163, 184, 0.7);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+.hud-data-stamp b {
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+/* 3. 2~3% 수준의 미세 홀로그램 셰이더 (Hologram Scanlines & Dot Matrix) */
+.hologram-scanlines {
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.025) 0px,
+    rgba(255, 255, 255, 0.025) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+.hologram-dots {
+  background-image: radial-gradient(rgba(0, 240, 255, 0.04) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+/* 4. 옵시디언 딥 다크 글래스 (절제된 무채색 기조) */
+.obsidian-card {
+  background: linear-gradient(135deg, rgba(4, 9, 20, 0.88) 0%, rgba(2, 5, 14, 0.94) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.8), inset 0 1px 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* 5. 1~2프레임 (0.04s) 순간 RGB Split 글리치 */
+@keyframes rgbGlitchInstant {
+  0% {
+    transform: translate(0, 0);
+    text-shadow: none;
+    filter: none;
+  }
+  25% {
+    transform: translate(-1.5px, 0.5px);
+    text-shadow: -2px 0 rgba(255, 0, 85, 0.85), 2px 0 rgba(0, 240, 255, 0.85);
+  }
+  65% {
+    transform: translate(1.5px, -0.5px);
+    text-shadow: 2px 0 rgba(255, 0, 85, 0.85), -2px 0 rgba(0, 240, 255, 0.85);
+  }
+  100% {
+    transform: translate(0, 0);
+    text-shadow: none;
+    filter: none;
+  }
+}
+
+.glitch-hover:hover {
+  animation: rgbGlitchInstant 0.08s steps(2, end) 1;
+}
+
+/* 6. 스프링 물리(Spring Physics) 키네틱 버튼 */
+.spring-btn {
+  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  will-change: transform;
+}
+.spring-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+}
+.spring-btn:active {
+  transform: translateY(1.5px) scale(0.97);
+  transition-duration: 0.08s;
+}
+
+/* 7. 순차적 렌더링 (Sequential Reveal: 테두리 -> 표면 -> 콘텐츠) */
+@keyframes bootFrame {
+  0% {
+    opacity: 0;
+    clip-path: inset(50% 50% 50% 50%);
+  }
+  40% {
+    opacity: 0.85;
+    clip-path: inset(0% 0% 0% 0%);
+  }
+  100% {
+    opacity: 1;
+    clip-path: inset(0% 0% 0% 0%);
+  }
+}
+
+@keyframes bootSurface {
+  0% {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(16px);
+  }
+}
+
+@keyframes bootContent {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.boot-frame {
+  animation: bootFrame 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.boot-surface {
+  animation: bootSurface 0.28s ease-out 0.06s forwards;
+  opacity: 0;
+}
+.boot-content {
+  animation: bootContent 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0.12s forwards;
+  opacity: 0;
+}
+

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ThemeType, TargetShape, Difficulty, SoundPresetType, ClientRole } from '@/types';
 import { VoiceManager } from '@/core/audio/VoiceManager';
 import { SoundManager } from '@/core/audio/SoundManager';
+import { useParallaxTilt } from '@/hooks/useParallaxTilt';
 import {
   Sliders,
   X,
@@ -71,6 +72,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [hostInput, setHostInput] = useState(serverHost);
 
+  const { ref: tiltRef, tiltStyle, onMouseMove, onMouseLeave } = useParallaxTilt<HTMLDivElement>({
+    maxTilt: 3.0,
+    perspective: 1400,
+    scale: 1.005,
+  });
+
   if (!isOpen) return null;
 
   const handleSaveHost = () => {
@@ -88,20 +95,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="hud-panel hud-corners p-5 md:p-6 w-full max-w-xl flex flex-col gap-4 border-cyan-500/30 max-h-[92vh] overflow-y-auto">
+    <div className="modal-backdrop glass-scanlines">
+      <div
+        ref={tiltRef}
+        style={tiltStyle}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        className="cyber-glass obsidian-card hud-bracket-box-all bracket-cyan boot-frame hologram-scanlines p-5 md:p-6 w-full max-w-xl flex flex-col gap-4 border border-cyan-400/40 shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_25px_rgba(0,240,255,0.18)] max-h-[92vh] overflow-y-auto custom-scrollbar"
+      >
         {/* 헤더 */}
-        <div className="flex justify-between items-center border-b border-cyan-500/20 pb-3">
+        <div className="flex justify-between items-center border-b border-cyan-400/20 pb-3">
           <div className="flex flex-col">
-            <span className="text-[10px] text-cyan-400 font-mono tracking-widest flex items-center gap-1.5">
+            <span className="text-[10px] text-cyan-400 font-mono tracking-widest flex items-center gap-2">
               <Sliders className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.75} />
-              <span>// 시스템 환경 설정</span>
+              <span>// 시스템 환경 설정 // SYSTEM PARAMETERS</span>
+              <span className="hud-data-stamp">NODE: <b>0x2A</b></span>
             </span>
-            <h2 className="cyber-title text-xl text-white">사격장 가상 환경 및 오디오 제어</h2>
+            <h2 className="cyber-title text-xl text-white drop-shadow-[0_0_10px_rgba(0,240,255,0.3)]">사격장 가상 환경 및 오디오 제어</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-cyan-400 transition-colors p-1"
+            className="text-gray-400 hover:text-cyan-300 transition-colors p-1.5 rounded-sm hover:bg-white/[0.05] spring-btn cursor-pointer"
             title="닫기"
           >
             <X className="w-5 h-5" strokeWidth={1.75} />
@@ -110,7 +124,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* 1. 가상 공간 테마 선택 */}
         <div className="flex flex-col gap-1.5 font-mono text-xs">
-          <div className="text-[11px] text-gray-400 tracking-wider flex items-center gap-1.5">
+          <div className="text-[11px] text-gray-300 tracking-wider flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} />
             <span>01 // 경기장 가상 테마 선택</span>
           </div>
@@ -123,10 +137,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <button
                 key={t.id}
                 onClick={() => onSelectTheme(t.id as ThemeType)}
-                className={`p-2 rounded-sm border text-left transition-all cursor-pointer ${
+                className={`p-2.5 rounded-sm border text-left transition-all cursor-pointer backdrop-blur-md ${
                   currentTheme === t.id
-                    ? 'border-cyan-400 bg-cyan-950/30 text-cyan-300'
-                    : 'border-slate-800 bg-slate-950/20 text-gray-400 hover:border-slate-600'
+                    ? 'border-cyan-400 bg-cyan-950/50 text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.25)]'
+                    : 'border-white/10 bg-white/[0.03] text-gray-400 hover:border-cyan-400/40 hover:bg-white/[0.06] hover:text-gray-200'
                 }`}
               >
                 <div className="font-bold text-[11px] font-mono">{t.name}</div>
@@ -138,7 +152,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* 2. 3D 표적 형태 선택 */}
         <div className="flex flex-col gap-1.5 font-mono text-xs">
-          <div className="text-[11px] text-gray-400 tracking-wider flex items-center gap-1.5">
+          <div className="text-[11px] text-gray-300 tracking-wider flex items-center gap-1.5">
             <Box className="w-3.5 h-3.5 text-pink-400" strokeWidth={1.5} />
             <span>02 // 3D 표적 기체 형태</span>
           </div>
@@ -152,10 +166,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <button
                 key={s.id}
                 onClick={() => onSelectShape(s.id as TargetShape)}
-                className={`py-2 px-1.5 rounded-sm border text-center transition-all cursor-pointer ${
+                className={`py-2 px-1.5 rounded-sm border text-center transition-all cursor-pointer backdrop-blur-md ${
                   currentShape === s.id
-                    ? 'border-pink-500 bg-pink-950/30 text-pink-300'
-                    : 'border-slate-800 bg-slate-950/20 text-gray-400 hover:border-slate-600'
+                    ? 'border-pink-500 bg-pink-950/50 text-pink-300 shadow-[0_0_15px_rgba(255,0,85,0.25)]'
+                    : 'border-white/10 bg-white/[0.03] text-gray-400 hover:border-pink-500/40 hover:bg-white/[0.06] hover:text-gray-200'
                 }`}
               >
                 <div className="font-bold text-[11px] font-mono">{s.name}</div>
@@ -166,13 +180,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* 3. 효과음 프리셋 및 볼륨 */}
-        <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-3 font-mono text-xs">
+        <div className="flex flex-col gap-2 border-t border-white/10 pt-3 font-mono text-xs">
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400 tracking-wider flex items-center gap-1.5">
+            <span className="text-[11px] text-gray-300 tracking-wider flex items-center gap-1.5">
               <Volume2 className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} />
               <span>03 // 사격 효과음 프리셋</span>
             </span>
-            <span className="text-[11px] text-cyan-400 font-bold">
+            <span className="text-[11px] text-cyan-400 font-bold drop-shadow-[0_0_6px_rgba(0,240,255,0.4)]">
               볼륨: {Math.round(soundVolume * 100)}%
             </span>
           </div>
@@ -186,10 +200,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <button
                 key={p.id}
                 onClick={() => handleTestSound(p.id as SoundPresetType)}
-                className={`p-2 rounded-sm border text-left transition-all cursor-pointer ${
+                className={`p-2.5 rounded-sm border text-left transition-all cursor-pointer backdrop-blur-md ${
                   soundPreset === p.id
-                    ? 'border-cyan-400 bg-cyan-950/30 text-cyan-300'
-                    : 'border-slate-800 bg-slate-950/20 text-gray-400 hover:border-slate-600'
+                    ? 'border-cyan-400 bg-cyan-950/50 text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.25)]'
+                    : 'border-white/10 bg-white/[0.03] text-gray-400 hover:border-cyan-400/40 hover:bg-white/[0.06] hover:text-gray-200'
                 }`}
               >
                 <div className="font-bold text-[11px]">{p.name}</div>
@@ -212,25 +226,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* 4. 한국어 음성 브리핑 */}
-        <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-3 font-mono text-xs">
+        <div className="flex flex-col gap-2 border-t border-white/10 pt-3 font-mono text-xs">
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400 tracking-wider flex items-center gap-1.5">
+            <span className="text-[11px] text-gray-300 tracking-wider flex items-center gap-1.5">
               <Mic className="w-3.5 h-3.5 text-purple-400" strokeWidth={1.5} />
               <span>04 // 한국어 전술 음성 안내 (TTS)</span>
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleTestVoice}
-                className="text-[10px] border border-purple-500/40 px-2 py-0.5 text-purple-300 hover:border-purple-400 rounded-sm"
+                className="text-[10px] border border-purple-400/40 px-2.5 py-0.5 text-purple-300 hover:border-purple-300 bg-purple-950/30 hover:bg-purple-900/40 rounded-sm transition-all"
               >
                 음성 테스트
               </button>
               <button
                 onClick={() => onToggleVoice(!voiceEnabled)}
-                className={`text-[10px] px-2 py-0.5 border rounded-sm font-bold ${
+                className={`text-[10px] px-2.5 py-0.5 border rounded-sm font-bold transition-all ${
                   voiceEnabled
-                    ? 'bg-green-950/40 text-green-400 border-green-500'
-                    : 'bg-red-950/40 text-red-400 border-red-500'
+                    ? 'bg-green-950/50 text-green-400 border-green-500 shadow-[0_0_10px_rgba(0,255,136,0.2)]'
+                    : 'bg-red-950/50 text-red-400 border-red-500'
                 }`}
               >
                 {voiceEnabled ? '활성화됨' : '음소거'}
@@ -256,9 +270,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* 5. 난이도 및 조준 감도 & 릴레이 IP */}
-        <div className="grid grid-cols-2 gap-3 border-t border-slate-800/80 pt-3 font-mono text-xs">
+        <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-3 font-mono text-xs">
           <div className="flex flex-col gap-1">
-            <div className="flex justify-between text-[11px] text-gray-400 items-center">
+            <div className="flex justify-between text-[11px] text-gray-300 items-center">
               <span className="flex items-center gap-1">
                 <Crosshair className="w-3 h-3 text-cyan-400" strokeWidth={1.5} />
                 <span>조준 감도</span>
@@ -277,7 +291,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] text-gray-400 flex items-center gap-1">
+            <span className="text-[11px] text-gray-300 flex items-center gap-1">
               <Server className="w-3 h-3 text-cyan-400" strokeWidth={1.5} />
               <span>릴레이 서버 호스트</span>
             </span>
@@ -287,11 +301,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 value={hostInput}
                 onChange={(e) => setHostInput(e.target.value)}
                 placeholder="localhost"
-                className="bg-slate-950/60 border border-slate-700 px-2 py-1 text-xs text-white font-mono w-full focus:outline-none focus:border-cyan-400 rounded-sm"
+                className="bg-black/50 border border-white/20 px-2.5 py-1 text-xs text-white font-mono w-full focus:outline-none focus:border-cyan-400 rounded-sm focus:shadow-[0_0_10px_rgba(0,240,255,0.25)]"
               />
               <button
                 onClick={handleSaveHost}
-                className="hud-btn text-[10px] py-1 px-2"
+                className="glass-btn text-[10px] py-1 px-3"
               >
                 저장
               </button>
@@ -300,7 +314,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* 6. 전시회 전용 기기 역할 고정 설정 */}
-        <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-3">
+        <div className="flex flex-col gap-2 border-t border-white/10 pt-3">
           <div className="flex justify-between items-center">
             <span className="text-[11px] text-cyan-400 font-mono font-bold flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-cyan-400" />
@@ -314,10 +328,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => onSelectRole?.('P1')}
-              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
+              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer backdrop-blur-md ${
                 clientRole === 'P1'
-                  ? 'border-cyan-400 bg-cyan-950/60 text-cyan-300 font-bold shadow-[0_0_12px_rgba(0,240,255,0.3)]'
-                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
+                  ? 'border-cyan-400 bg-cyan-950/60 text-cyan-300 font-bold shadow-[0_0_18px_rgba(0,240,255,0.35)]'
+                  : 'border-white/10 bg-white/[0.03] text-gray-400 hover:border-cyan-400/40 hover:bg-white/[0.06]'
               }`}
             >
               <span className="text-xs font-bold text-cyan-400">선수 1 (1P)</span>
@@ -326,10 +340,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => onSelectRole?.('P2')}
-              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
+              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer backdrop-blur-md ${
                 clientRole === 'P2'
-                  ? 'border-pink-500 bg-pink-950/60 text-pink-300 font-bold shadow-[0_0_12px_rgba(255,0,85,0.3)]'
-                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
+                  ? 'border-pink-500 bg-pink-950/60 text-pink-300 font-bold shadow-[0_0_18px_rgba(255,0,85,0.35)]'
+                  : 'border-white/10 bg-white/[0.03] text-gray-400 hover:border-pink-500/40 hover:bg-white/[0.06]'
               }`}
             >
               <span className="text-xs font-bold text-pink-400">선수 2 (2P)</span>
@@ -338,13 +352,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => onSelectRole?.('SPECTATOR')}
-              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
+              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer backdrop-blur-md ${
                 clientRole === 'SPECTATOR'
-                  ? 'border-yellow-400 bg-yellow-950/60 text-yellow-300 font-bold shadow-[0_0_12px_rgba(255,230,0,0.3)]'
-                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
+                  ? 'border-amber-400 bg-amber-950/60 text-amber-300 font-bold shadow-[0_0_18px_rgba(255,170,0,0.35)]'
+                  : 'border-white/10 bg-white/[0.03] text-gray-400 hover:border-amber-400/40 hover:bg-white/[0.06]'
               }`}
             >
-              <span className="text-xs font-bold text-yellow-400">관람 중계 (모니터)</span>
+              <span className="text-xs font-bold text-amber-400">관람 중계 (모니터)</span>
               <span className="text-[10px] text-gray-400 font-mono">4단 방송 카메라</span>
             </button>
           </div>
@@ -354,10 +368,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* 닫기 버튼 */}
-        <div className="pt-2 border-t border-slate-800/80">
+        <div className="pt-2 border-t border-white/10">
           <button
             onClick={onClose}
-            className="hud-btn hud-btn-primary w-full py-2 text-xs gap-1.5"
+            className="glass-btn cyber-glass-p1 w-full py-2.5 text-xs gap-1.5 font-bold"
           >
             <Check className="w-4 h-4" strokeWidth={2} />
             <span>설정 저장 및 사격장 복귀</span>

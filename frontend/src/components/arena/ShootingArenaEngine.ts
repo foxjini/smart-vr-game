@@ -266,6 +266,7 @@ export class ShootingArenaEngine {
       vrBtn.style.color = '#00f0ff';
       vrBtn.style.cursor = 'pointer';
       vrBtn.style.boxShadow = '0 0 24px rgba(0, 240, 255, 0.4)';
+      vrBtn.style.display = 'none'; // 자체 AAA 사이버 UI 전용 버튼을 사용하므로 DOM 원본 버튼은 숨김 유지
       document.body.appendChild(vrBtn);
       this.vrButtonElement = vrBtn;
     } catch (e) {
@@ -281,22 +282,13 @@ export class ShootingArenaEngine {
   // ==========================================
   private initNetworkListeners() {
     this.inputManager.onClientAssigned = (role, _playerId) => {
-      this.clientRole = role;
-      if (role === 'SPECTATOR') {
-        this.p1Head.visible = true;
-        this.p2Head.visible = true;
-      } else if (role === 'P1') {
-        this.p1Head.visible = false;
-        this.p2Head.visible = true;
-        this.attachLocalBlasterToActiveController();
-      } else if (role === 'P2') {
-        this.p2Head.visible = false;
-        this.p1Head.visible = true;
-        this.attachLocalBlasterToActiveController();
-      }
+      this.setRole(role);
     };
 
-    this.inputManager.onRoomStateChange = (_state) => {
+    this.inputManager.onRoomStateChange = (state) => {
+      if (state.mode === 'VERSUS_PVP' || state.p2Connected) {
+        this.cyberAI.reset();
+      }
       if (this.onVersusStatsUpdate) {
         this.notifyVersusStats();
       }
@@ -304,18 +296,26 @@ export class ShootingArenaEngine {
 
     this.inputManager.onRemotePose = (pose: PlayerPose) => {
       if (pose.playerId === 1 && this.clientRole !== 'P1') {
-        this.p1Head.position.set(...pose.headPos);
+        // P1(Cyan): 2P 관점에선 좌측(-1.2m), 관람객에선 좌측(-0.6m) 레인에 정확히 위치
+        const laneX = this.clientRole === 'P2' ? -1.2 : -0.6;
+        this.p1Head.position.set(pose.headPos[0] + laneX, pose.headPos[1], pose.headPos[2]);
         this.p1Head.quaternion.set(...pose.headQuat);
-        this.p1Blaster.group.position.set(...pose.blasterPos);
+        this.p1Blaster.group.position.set(pose.blasterPos[0] + laneX, pose.blasterPos[1], pose.blasterPos[2]);
         this.p1Blaster.group.quaternion.set(...pose.blasterQuat);
+        this.p1Head.visible = true;
+        this.p1Blaster.group.visible = true;
         if (this.p1Blaster.recoilOffset > 0) {
           this.p1Blaster.group.rotateX(-this.p1Blaster.recoilOffset);
         }
       } else if (pose.playerId === 2 && this.clientRole !== 'P2') {
-        this.p2Head.position.set(...pose.headPos);
+        // P2(Magenta): 1P 관점에선 우측(+1.2m), 관람객에선 우측(+0.6m) 레인에 정확히 위치 (오버랩 방지)
+        const laneX = this.clientRole === 'P1' ? 1.2 : 0.6;
+        this.p2Head.position.set(pose.headPos[0] + laneX, pose.headPos[1], pose.headPos[2]);
         this.p2Head.quaternion.set(...pose.headQuat);
-        this.p2Blaster.group.position.set(...pose.blasterPos);
+        this.p2Blaster.group.position.set(pose.blasterPos[0] + laneX, pose.blasterPos[1], pose.blasterPos[2]);
         this.p2Blaster.group.quaternion.set(...pose.blasterQuat);
+        this.p2Head.visible = true;
+        this.p2Blaster.group.visible = true;
         if (this.p2Blaster.recoilOffset > 0) {
           this.p2Blaster.group.rotateX(-this.p2Blaster.recoilOffset);
         }
@@ -461,7 +461,7 @@ export class ShootingArenaEngine {
     if (blaster.group.parent !== this.scene) {
       this.scene.add(blaster.group);
     }
-    const defaultX = this.clientRole === 'P2' ? 0.35 : -0.35;
+    const defaultX = this.clientRole === 'P2' ? 0.6 : -0.6;
     blaster.group.position.set(defaultX, 1.35, -0.45);
     blaster.group.rotation.set(0, 0, 0);
   }
@@ -482,14 +482,14 @@ export class ShootingArenaEngine {
     this.scene.add(backLight);
   }
 
-  /** 1P(Cyan) 및 2P(Magenta) 듀얼 블래스터 절차적 구축 */
+  /** 1P(Cyan, 좌측 -0.6m) 및 2P(Magenta, 우측 +0.6m) 듀얼 블래스터 절차적 구축 */
   private buildDualBlasters() {
     this.p1Blaster = this.createBlasterRig(0x00f0ff, 'PLAYER 1 (CYAN)');
-    this.p1Blaster.group.position.set(-0.35, 1.35, -0.45);
+    this.p1Blaster.group.position.set(-0.6, 1.35, -0.45);
     this.scene.add(this.p1Blaster.group);
 
     this.p2Blaster = this.createBlasterRig(0xff0055, 'PLAYER 2 / AI (MAGENTA)');
-    this.p2Blaster.group.position.set(0.35, 1.35, -0.45);
+    this.p2Blaster.group.position.set(0.6, 1.35, -0.45);
     this.scene.add(this.p2Blaster.group);
   }
 
@@ -593,15 +593,15 @@ export class ShootingArenaEngine {
     };
   }
 
-  /** 원격 플레이어용 3D VR 바이저 헤드 아바타 구축 */
+  /** 원격 플레이어용 3D VR 바이저 헤드 아바타 구축 (1P 좌측 -0.6m, 2P 우측 +0.6m) */
   private buildVRHeadAvatars() {
     this.p1Head = this.createVRHeadMesh(0x00f0ff, 'P1: CYAN');
-    this.p1Head.position.set(-0.35, 1.6, 0);
+    this.p1Head.position.set(-0.6, 1.6, 0);
     this.p1Head.visible = this.clientRole === 'SPECTATOR';
     this.scene.add(this.p1Head);
 
     this.p2Head = this.createVRHeadMesh(0xff0055, 'P2: MAGENTA');
-    this.p2Head.position.set(0.35, 1.6, 0);
+    this.p2Head.position.set(0.6, 1.6, 0);
     this.p2Head.visible = true;
     this.scene.add(this.p2Head);
   }
@@ -1263,6 +1263,12 @@ export class ShootingArenaEngine {
     const playerId = this.clientRole === 'P2' ? 2 : 1;
     this.inputManager.sendFireEvent(playerId);
 
+    const inVR = this.renderer.xr.isPresenting;
+    if (inVR && this.activeController) {
+      this.activeController.updateMatrixWorld(true);
+    }
+    localBlaster.group.updateMatrixWorld(true);
+
     const muzzleWorldPos = new THREE.Vector3();
     const muzzleWorldQuat = new THREE.Quaternion();
     localBlaster.group.getWorldPosition(muzzleWorldPos);
@@ -1442,25 +1448,30 @@ export class ShootingArenaEngine {
   /** 로컬 클라이언트에서 표적을 자체 스폰해야 하는지 판정 (PC 단독, 호스트, 단독 관람) */
   public canSpawnTargetsLocally(): boolean {
     if (!this.isPlaying || this.isPaused) return false;
-    // 1. 서버 미연결 (오프라인 / 단독 PC 모드)
+    // 1. 관람객은 절대 자체 표적 스폰 금지 (P1 호스트의 스폰 패킷 수신)
+    if (this.clientRole === 'SPECTATOR') return false;
+    // 2. 서버 미연결 (오프라인 / 단독 PC 모드)
     if (!this.inputManager.isConnectedToServer) return true;
-    // 2. AI 대전 모드 (인간 2인 대전이 아닌 모든 경우 로컬 표적 생성 필수)
-    if (this.inputManager.versusMode !== 'VERSUS_PVP') return true;
     // 3. 내가 1P 호스트인 경우
     if (this.clientRole === 'P1') return true;
     // 4. 내가 2P인데 1P 인간 플레이어가 부재한 경우
     if (this.clientRole === 'P2' && !this.inputManager.isP1Connected) return true;
-    // 5. 안전 폴백: 표적이 0개면 무조건 스폰
-    if (this.activeTargets.length === 0) return true;
     return false;
   }
 
   /** 로컬 클라이언트에서 AI Rival 연산을 구동해야 하는지 판정 */
   public shouldRunAILocally(): boolean {
     if (!this.isPlaying || this.isPaused) return false;
+    // 1. 관람객(SPECTATOR)은 절대 자체 AI를 실행하지 않음 (네트워크 패킷 중복 오염 방지)
+    if (this.clientRole === 'SPECTATOR') return false;
+    // 2. 1:1 인간 대전 모드(VERSUS_PVP)이거나 상대방 선수가 연결되어 있다면 AI 절대 금지!
+    if (this.inputManager.versusMode === 'VERSUS_PVP') return false;
+    if (this.clientRole === 'P1' && this.inputManager.isP2Connected) return false;
+    if (this.clientRole === 'P2' && this.inputManager.isP1Connected) return false;
+
+    // 3. 상대가 없는 단독 플레이일 때만 AI 구동
     if (this.clientRole === 'P1' && !this.inputManager.isP2Connected) return true;
     if (this.clientRole === 'P2' && !this.inputManager.isP1Connected) return true;
-    if (this.clientRole === 'SPECTATOR' && !this.inputManager.isP1Connected && !this.inputManager.isP2Connected) return true;
     return false;
   }
 
@@ -1538,9 +1549,12 @@ export class ShootingArenaEngine {
     this.spawnTimer = 0;
 
     // 게임 시작 즉시 초기 표적 3개 즉시 생성 (대기 시간 없이 즉시 조준 사격 가능)
-    const initialCount = Math.min(3, this.difficultyConfigs[this.currentDifficulty].maxTargets);
-    for (let i = 0; i < initialCount; i++) {
-      this.spawnTarget();
+    // 단, 호스트(P1) 등 스폰 권한이 있는 단일 클라이언트만 생성하여 클라이언트 간 중복 생성 및 패킷 폭풍 방지
+    if (this.canSpawnTargetsLocally()) {
+      const initialCount = Math.min(3, this.difficultyConfigs[this.currentDifficulty].maxTargets);
+      for (let i = 0; i < initialCount; i++) {
+        this.spawnTarget();
+      }
     }
 
     this.notifyStats();
@@ -1815,7 +1829,7 @@ export class ShootingArenaEngine {
         this.aimPitch = THREE.MathUtils.lerp(this.aimPitch, targetPitch, delta * 18);
         this.aimYaw = THREE.MathUtils.lerp(this.aimYaw, targetYaw, delta * 18);
 
-        const defaultX = this.clientRole === 'P2' ? 0.35 : -0.35;
+        const defaultX = this.clientRole === 'P2' ? 0.6 : -0.6;
         localBlaster.group.position.set(defaultX, 1.35, -0.45);
         localBlaster.group.rotation.set(this.aimPitch + localBlaster.recoilOffset, this.aimYaw, 0);
       }
@@ -1824,9 +1838,16 @@ export class ShootingArenaEngine {
       this.poseSendTimer += delta;
       if (this.poseSendTimer >= 0.05) {
         this.poseSendTimer = 0;
-        this.camera.getWorldPosition(this._tempVec1);
-        this.camera.getWorldQuaternion(this._tempQuat1);
 
+        // WebXR 몰입 모드에서는 renderer.xr.getCamera()가 실제 HMD 6DoF 시선 자세를 소유함
+        const headCam = inVR ? this.renderer.xr.getCamera() : this.camera;
+        headCam.getWorldPosition(this._tempVec1);
+        headCam.getWorldQuaternion(this._tempQuat1);
+
+        if (inVR && this.activeController) {
+          this.activeController.updateMatrixWorld(true);
+        }
+        localBlaster.group.updateMatrixWorld(true);
         localBlaster.group.getWorldPosition(this._tempVec2);
         localBlaster.group.getWorldQuaternion(this._tempQuat2);
 
@@ -1839,8 +1860,8 @@ export class ShootingArenaEngine {
           blasterQuat: [this._tempQuat2.x, this._tempQuat2.y, this._tempQuat2.z, this._tempQuat2.w],
         });
 
-        // AI Rival 모드: P1 호스트가 AI 봇(P2)의 6DoF 헤드 및 블래스터 위치/회전도 관람자에게 동기화 브로드캐스트
-        if (this.clientRole === 'P1' && !this.inputManager.isP2Connected) {
+        // AI Rival 모드: P1 호스트가 AI 봇(P2)의 6DoF 헤드 및 블래스터 위치/회전도 관람자에게 동기화 브로드캐스트 (PvP 대결 중에는 절대 전송 금지)
+        if (this.clientRole === 'P1' && !this.inputManager.isP2Connected && this.inputManager.versusMode !== 'VERSUS_PVP') {
           this.p2Head.getWorldPosition(this._tempVec1);
           this.p2Head.getWorldQuaternion(this._tempQuat1);
 
@@ -1849,9 +1870,9 @@ export class ShootingArenaEngine {
 
           this.inputManager.sendPose({
             playerId: 2,
-            headPos: [this._tempVec1.x, this._tempVec1.y, this._tempVec1.z],
+            headPos: [this._tempVec1.x - 0.6, this._tempVec1.y, this._tempVec1.z],
             headQuat: [this._tempQuat1.x, this._tempQuat1.y, this._tempQuat1.z, this._tempQuat1.w],
-            blasterPos: [this._tempVec2.x, this._tempVec2.y, this._tempVec2.z],
+            blasterPos: [this._tempVec2.x - 0.6, this._tempVec2.y, this._tempVec2.z],
             blasterQuat: [this._tempQuat2.x, this._tempQuat2.y, this._tempQuat2.z, this._tempQuat2.w],
           });
         }
@@ -2001,13 +2022,20 @@ export class ShootingArenaEngine {
     if (role === 'SPECTATOR') {
       this.p1Head.visible = true;
       this.p2Head.visible = true;
+      this.p1Blaster.group.visible = true;
+      this.p2Blaster.group.visible = true;
+      this.spectatorCam.setMode('STADIUM');
     } else if (role === 'P1') {
       this.p1Head.visible = false;
       this.p2Head.visible = true;
+      this.p1Blaster.group.visible = true;
+      this.p2Blaster.group.visible = true;
       this.attachLocalBlasterToActiveController();
     } else if (role === 'P2') {
       this.p2Head.visible = false;
       this.p1Head.visible = true;
+      this.p1Blaster.group.visible = true;
+      this.p2Blaster.group.visible = true;
       this.attachLocalBlasterToActiveController();
     }
   }
