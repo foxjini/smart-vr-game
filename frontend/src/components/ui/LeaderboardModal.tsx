@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LeaderboardManager } from '@/core/leaderboard/LeaderboardManager';
+import { LeaderboardEntry } from '@/types';
 import { useParallaxTilt } from '@/hooks/useParallaxTilt';
 import {
   Trophy,
@@ -22,8 +23,14 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   onClose,
   highlightId,
 }) => {
-  const [, setResetTick] = useState(0);
-  const entries = typeof window !== 'undefined' ? LeaderboardManager.getInstance().getTopScores(10) : [];
+  const [resetTick, setResetTick] = useState(0);
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setEntries(LeaderboardManager.getInstance().getTopScores(10));
+    }
+  }, [isOpen, resetTick]);
 
   const { ref: tiltRef, tiltStyle, onMouseMove, onMouseLeave } = useParallaxTilt<HTMLDivElement>({
     maxTilt: 3.0,

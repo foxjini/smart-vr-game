@@ -32,6 +32,13 @@ export class VoiceManager {
   private constructor() {
     if (typeof window !== 'undefined') {
       this.preloadAudios();
+      const unlockAudio = () => {
+        this.initAudioContext();
+        window.removeEventListener('pointerdown', unlockAudio);
+        window.removeEventListener('keydown', unlockAudio);
+      };
+      window.addEventListener('pointerdown', unlockAudio, { once: true });
+      window.addEventListener('keydown', unlockAudio, { once: true });
     }
   }
 
@@ -136,8 +143,12 @@ export class VoiceManager {
 
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-          playPromise.catch((err) => {
-            console.warn('Audio playback error (Autoplay blocked):', err);
+          playPromise.catch((err: any) => {
+            if (err?.name === 'NotAllowedError') {
+              // 브라우저 자동 재생 정책: 첫 사용자 제스처 전 음성 차단은 정상 동작
+              return;
+            }
+            console.warn('Audio playback error:', err);
           });
         }
       } catch (e) {

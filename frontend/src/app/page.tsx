@@ -34,21 +34,10 @@ export default function ShootingArenaPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<ShootingArenaEngine | null>(null);
 
+
   // 시스템 및 통신 상태
   const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
-  const [clientRole, setClientRole] = useState<ClientRole>(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const r = (urlParams.get('role') || urlParams.get('mode') || '').toLowerCase();
-      if (r === 'spectator' || r === 'observer' || r === 'spec') return 'SPECTATOR';
-      if (r === 'p2' || r === 'player2' || r === '2') return 'P2';
-      if (r === 'p1' || r === 'player1' || r === '1') return 'P1';
-
-      const saved = localStorage.getItem('cyber_strike_fixed_role') as ClientRole | null;
-      if (saved === 'P1' || saved === 'P2' || saved === 'SPECTATOR') return saved;
-    }
-    return 'P1';
-  });
+  const [clientRole, setClientRole] = useState<ClientRole>('P1');
   const [spectatorCameraMode, setSpectatorCameraMode] = useState<SpectatorCameraMode>('STADIUM');
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
     pico_connected: false,
@@ -56,14 +45,7 @@ export default function ShootingArenaPage() {
     game_clients_count: 0,
     spectator_count: 0,
   });
-  const [serverHost, setServerHost] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const savedHost = localStorage.getItem('cyber_strike_server_host');
-      if (savedHost) return savedHost;
-      if (window.location.hostname) return window.location.hostname;
-    }
-    return 'localhost';
-  });
+  const [serverHost, setServerHost] = useState<string>('localhost');
   const [isP2Connected, setIsP2Connected] = useState<boolean>(false);
   const [sensitivity, setSensitivity] = useState<number>(1.0);
   const [isVRSupported, setIsVRSupported] = useState<boolean>(false);
@@ -210,6 +192,13 @@ export default function ShootingArenaPage() {
 
     // URL 쿼리 또는 저장된 역할에 따라 자동 역할 배정 및 소켓 연결
     if (typeof window !== 'undefined') {
+      const savedHost = localStorage.getItem('cyber_strike_server_host');
+      if (savedHost) {
+        setServerHost(savedHost);
+      } else if (window.location.hostname) {
+        setServerHost(window.location.hostname);
+      }
+
       const urlParams = new URLSearchParams(window.location.search);
       const rParam = (urlParams.get('role') || urlParams.get('mode') || '').toLowerCase();
       let initRole: ClientRole | undefined = undefined;
@@ -230,6 +219,8 @@ export default function ShootingArenaPage() {
         setClientRole(initRole);
         engine.setRole(initRole);
         if (initRole === 'SPECTATOR') {
+          setIsMainMenuOpen(false);
+          setSpectatorCameraMode('STADIUM');
           engine.setSpectatorCameraMode('STADIUM');
         }
         inputMgr.connect(undefined, initRole);

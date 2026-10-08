@@ -77,7 +77,7 @@ export class ShootingArenaEngine {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
-  private clock: THREE.Clock;
+  private lastFrameTime: number = 0;
 
   // 게임 매니저 참조
   private soundManager = SoundManager.getInstance();
@@ -192,7 +192,6 @@ export class ShootingArenaEngine {
   constructor(container: HTMLElement) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.clock = new THREE.Clock();
 
     // 1. 카메라 설정
     this.camera = new THREE.PerspectiveCamera(
@@ -1625,8 +1624,10 @@ export class ShootingArenaEngine {
     }
   }
 
-  private animate = () => {
-    const delta = Math.min(this.clock.getDelta(), 0.1);
+  private animate = (timestamp?: number) => {
+    const now = typeof timestamp === 'number' && timestamp > 0 ? timestamp : performance.now();
+    const delta = this.lastFrameTime === 0 ? 0.016 : Math.min((now - this.lastFrameTime) / 1000, 0.1);
+    this.lastFrameTime = now;
 
     // 1. 게임 타이머 관리
     if (this.isPlaying && !this.isPaused) {

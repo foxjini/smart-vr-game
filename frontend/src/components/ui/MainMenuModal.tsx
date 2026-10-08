@@ -127,9 +127,9 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
               </div>
 
               {/* 시스템 링크 및 역할 배정 */}
-              <div className="flex items-center gap-1.5 font-mono text-cyan-400 px-2 py-0.5 border border-cyan-500/30 rounded bg-cyan-950/30">
+              <div className="flex items-center gap-1.5 font-mono text-cyan-400 px-2 py-0.5 border border-cyan-500/30 rounded bg-cyan-950/30" suppressHydrationWarning>
                 <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                <span>[{getRoleKorean(clientRole)}]</span>
+                <span suppressHydrationWarning>[{getRoleKorean(clientRole)}]</span>
               </div>
 
               {/* 1:1 PvP 매칭 상태 */}
