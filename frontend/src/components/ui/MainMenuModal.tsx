@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ThemeType, TargetShape, Difficulty, ClientRole } from '@/types';
+import { ThemeType, TargetShape, Difficulty, ClientRole, ConnectionIssue } from '@/types';
 import {
   Activity,
   Sliders,
@@ -41,8 +41,8 @@ interface MainMenuModalProps {
   clientRole?: ClientRole;
   versusMode?: 'VERSUS_PVP' | 'VERSUS_AI';
   isP2Connected?: boolean;
-  /** 다른 기기가 같은 역할로 접속해 이 기기의 연결이 해제됨 */
-  isReplaced?: boolean;
+  /** 역할 자리 관련 연결 문제 (다른 기기가 사용 중 등) */
+  connectionIssue?: ConnectionIssue | null;
 }
 
 export const MainMenuModal: React.FC<MainMenuModalProps> = ({
@@ -60,7 +60,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   clientRole = 'P1',
   versusMode = 'VERSUS_AI',
   isP2Connected = false,
-  isReplaced = false,
+  connectionIssue = null,
 }) => {
   const [currentStep, setCurrentStep] = useState<MenuStep>('welcome');
 
@@ -122,9 +122,11 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 <span>[{getRoleKorean(clientRole)}]</span>
               </div>
 
-              {isReplaced && (
+              {connectionIssue && (
                 <span className="text-red-300 font-bold font-mono text-[11px] px-2 py-0.5 border border-red-500/50 rounded bg-red-950/40">
-                  [다른 기기가 같은 역할로 접속해 연결 해제됨 · 설정에서 역할을 바꾸거나 새로고침]
+                  {connectionIssue === 'slot_busy'
+                    ? '[이 역할은 다른 기기가 사용 중 · 자리가 비면 자동으로 접속합니다]'
+                    : '[같은 역할로 새로 접속되어 연결 해제됨 · 새로고침하세요]'}
                 </span>
               )}
 

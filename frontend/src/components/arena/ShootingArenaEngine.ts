@@ -37,6 +37,9 @@ const HOST_SILENCE_BEFORE_BACKUP = 3.0;
 
 type PlayerSlot = 1 | 2;
 
+/** 결과 없이 끝나는 경기 종료 사유 (경기 중단, 같은 역할 새 접속, 내 자리를 다른 기기가 사용 중) */
+const ABORT_REASONS = ['ABORT', 'REPLACED', 'SLOT_BUSY'];
+
 export interface TargetObject extends TargetObjectRef {
   id: string;
   mesh: THREE.Group;
@@ -157,6 +160,8 @@ export class ShootingArenaEngine {
   private pendingStartTimer: ReturnType<typeof setTimeout> | null = null;
   private matchEndWaitTimer: number = 0;
   private timeSinceRemoteSpawn: number = 0;
+  /** 서버 경기 종료 예정 시각 (performance.now 기준, 일시정지·로컬 경기는 null) */
+  private matchClockEndsAt: number | null = null;
 
   // 3D 오브젝트들
   /** 내 카메라·VR 컨트롤러·안내판을 담는 리그 (슬롯 위치로 이동) */
@@ -429,6 +434,21 @@ export class ShootingArenaEngine {
 
     this.inputManager.onMatchResumed = (data) => {
       if (this.isPlaying && data.matchId === this.matchId) this.setPausedLocal(false, data.remaining);
+    };
+
+    // 서버 시계로 주기 보정 (첫 화면을 그리느라 늦게 처리한 메시지 등으로 생긴 오차 제거)
+    this.inputManager.onMatchClock = (data) => {
+      if (this.isPlaying && !this.isPaused && data.matchId === this.matchId) {
+        this.roundTimer = data.remaining;
+        this.matchClockEndsAt = performance.now() + data.remaining * 1000;
+      }
+    };
+
+    // 내 역할 자리를 쓸 수 없게 되면 진행 중이던 서버 경기를 이 화면에서 정리 (VR 결과판에도 안내)
+    this.inputManager.onConnectionIssue = (issue) => {
+      if (this.isPlaying && this.matchId !== null) {
+        this.stopGameLocal(issue === 'replaced' ? 'REPLACED' : 'SLOT_BUSY');
+      }
     };
   }
 
@@ -776,12 +796,16 @@ export class ShootingArenaEngine {
       let winText = '🤝 DRAW MATCH!';
       if (winner === 'ABORT') {
         winText = '🛑 MATCH ABORTED (경기 중단)';
+      } else if (winner === 'REPLACED') {
+        winText = '🔌 연결 해제: 같은 역할로 새로 접속됨';
+      } else if (winner === 'SLOT_BUSY') {
+        winText = '⏳ 내 자리를 다른 기기가 사용 중';
       } else if (winner === 'P1') {
         winText = '🏆 PLAYER 1 (CYAN) WINS!';
       } else if (winner === 'P2') {
         winText = '🏆 PLAYER 2 (MAGENTA) WINS!';
       }
-      ctx.fillStyle = winner === 'ABORT' ? '#ff0055' : winner === 'P1' ? '#00f0ff' : winner === 'P2' ? '#ff0055' : '#ffffff';
+      ctx.fillStyle = ABORT_REASONS.includes(winner ?? '') ? '#ff0055' : winner === 'P1' ? '#00f0ff' : winner === 'P2' ? '#ff0055' : '#ffffff';
       ctx.font = '900 46px sans-serif';
       ctx.fillText(winText, w / 2, 130);
 
@@ -1677,6 +1701,8 @@ export class ShootingArenaEngine {
   /** 경기 시작 요청 (방아쇠, 시작 버튼, VR 진입). 서버 경기면 서버의 시작 신호에 맞춰 모두 함께 시작 */
   public startGame() {
     if (this.isPlaying || this.pendingStartTimer) return;
+    // 내 역할 자리를 다른 기기가 쓰는 중이면 혼자만 보이는 로컬 경기를 시작하지 않음
+    if (this.inputManager.connectionIssue) return;
     if (this.shouldUseServerMatch() && this.inputManager.sendMatchStart(MATCH_DURATION, this.currentDifficulty)) {
       // 서버 응답이 없으면 로컬 경기로 대체
       this.pendingStartTimer = setTimeout(() => {
@@ -1709,6 +1735,7 @@ export class ShootingArenaEngine {
     this.isPlaying = true;
     this.isPaused = Boolean(info?.isPaused);
     this.roundTimer = info ? info.remaining : MATCH_DURATION;
+    this.matchClockEndsAt = info && !info.isPaused ? performance.now() + info.remaining * 1000 : null;
     this.matchEndWaitTimer = 0;
     this.timeSinceRemoteSpawn = 0;
     this.lastReportedSecond = -1;
@@ -1747,10 +1774,12 @@ export class ShootingArenaEngine {
 
   /** 서버의 남은 시간·일시정지 상태로 로컬 시계 보정 */
   private syncMatchClock(info: MatchInfo) {
-    this.roundTimer = info.remaining;
     if (info.isPaused !== this.isPaused) {
-      this.setPausedLocal(info.isPaused);
+      this.setPausedLocal(info.isPaused, info.remaining);
+      return;
     }
+    this.roundTimer = info.remaining;
+    this.matchClockEndsAt = info.isPaused ? null : performance.now() + info.remaining * 1000;
   }
 
   private setPausedLocal(paused: boolean, remaining?: number) {
@@ -1758,6 +1787,8 @@ export class ShootingArenaEngine {
     if (remaining !== undefined) {
       this.roundTimer = remaining;
     }
+    // 서버 경기 시계는 실제 시각 기준 (일시정지 중에는 멈춤)
+    this.matchClockEndsAt = !paused && this.matchId !== null ? performance.now() + this.roundTimer * 1000 : null;
     if (this.onPauseChange) this.onPauseChange(paused);
   }
 
@@ -1812,6 +1843,7 @@ export class ShootingArenaEngine {
       this.lastEndedMatchId = this.matchId;
     }
     this.matchEndWaitTimer = 0;
+    this.matchClockEndsAt = null;
     this.vrExitHoldTimer = 0;
     this.updateVRPrompt(true, winner);
     if (this.vrPromptMesh) {
@@ -1824,7 +1856,8 @@ export class ShootingArenaEngine {
     const amWinner =
       (this.clientRole === 'P1' && winner === 'P1') ||
       (this.clientRole === 'P2' && winner === 'P2');
-    if (winner === 'ABORT') {
+    const aborted = ABORT_REASONS.includes(winner);
+    if (aborted) {
       this.voiceManager.speak('GAME_OVER');
     } else if (amWinner) {
       this.voiceManager.speak('VICTORY');
@@ -1839,7 +1872,7 @@ export class ShootingArenaEngine {
     if (this.onPauseChange) this.onPauseChange(false);
     if (this.onGameOver) {
       const myFinalStats = this.clientRole === 'P2' ? this.p2Stats : this.stats;
-      this.onGameOver({ ...myFinalStats }, { winner, aborted: winner === 'ABORT' });
+      this.onGameOver({ ...myFinalStats }, { winner, aborted });
     }
   }
 
@@ -1893,7 +1926,12 @@ export class ShootingArenaEngine {
 
     // 1. 게임 타이머 관리
     if (this.isPlaying && !this.isPaused) {
-      this.roundTimer -= delta;
+      if (this.matchClockEndsAt !== null) {
+        // 서버 경기: 실제 시각 기준 (프레임이 느리거나 헤드셋을 벗어 화면 갱신이 멈췄다 돌아와도 모든 화면이 같은 시간)
+        this.roundTimer = (this.matchClockEndsAt - performance.now()) / 1000;
+      } else {
+        this.roundTimer -= delta;
+      }
       const currentSec = Math.max(0, Math.ceil(this.roundTimer));
       const secondChanged = currentSec !== this.lastReportedSecond;
       this.stats.timeRemaining = currentSec;

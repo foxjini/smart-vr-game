@@ -1,9 +1,13 @@
-import { SystemStatus, StickData, ClientRole, PlayerPose, TargetSpawnPacket, Difficulty, MatchInfo } from '@/types';
+import { SystemStatus, StickData, ClientRole, PlayerPose, TargetSpawnPacket, Difficulty, MatchInfo, ConnectionIssue } from '@/types';
 
 export type InputMode = 'HYBRID' | 'STANDALONE' | 'WEBSOCKET_ONLY';
 
-/** 다른 기기가 같은 플레이어 슬롯으로 접속해 이 연결을 대체했을 때 서버가 보내는 종료 코드 */
+/** 같은 기기가 새 연결로 다시 접속해 이 연결이 대체됐을 때 서버가 보내는 종료 코드 */
 const CLOSE_CODE_REPLACED = 4001;
+/** 요청한 플레이어 자리를 다른 기기가 사용 중일 때 서버가 보내는 종료 코드 */
+const CLOSE_CODE_SLOT_BUSY = 4002;
+/** 자리가 빌 때까지 다시 시도하는 간격(ms) */
+const SLOT_BUSY_RETRY_MS = 5000;
 
 const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
 
@@ -32,8 +36,8 @@ export class InputManager {
 
   public mode: InputMode = 'HYBRID';
   public isConnectedToServer: boolean = false;
-  /** 다른 기기가 같은 역할로 접속해 연결이 해제된 상태 (자동 재접속하지 않음) */
-  public wasReplaced: boolean = false;
+  /** 역할 자리 관련 연결 문제 (정상 배정되면 null) */
+  public connectionIssue: ConnectionIssue | null = null;
   public clientRole: ClientRole = 'P1';
   public playerId: number | null = 1;
   public isP1Connected: boolean = false;
@@ -85,8 +89,10 @@ export class InputManager {
   public onMatchOverBroadcast?: (data: { matchId?: number; p1Score: number; p2Score: number; winner: string }) => void;
   public onMatchAborted?: (data: { matchId?: number; message?: string }) => void;
   public onMatchPaused?: (data: { matchId?: number; remaining: number }) => void;
+  /** 경기 중 서버가 주기적으로 보내는 남은 시간 (화면 간 시계 보정) */
+  public onMatchClock?: (data: { matchId?: number; remaining: number }) => void;
   public onMatchResumed?: (data: { matchId?: number; remaining: number }) => void;
-  public onConnectionReplaced?: () => void;
+  public onConnectionIssue?: (issue: ConnectionIssue) => void;
 
   // 감도 및 설정
   public sensitivity: number = 1.0;
@@ -172,8 +178,6 @@ export class InputManager {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.wasReplaced = false;
-
     let targetUrl = url;
     if (!targetUrl) {
       const params = new URLSearchParams();
@@ -223,20 +227,18 @@ export class InputManager {
         if (this.ws !== socket) return;
         this.isConnectedToServer = false;
         this.ws = null;
-        if (event.code === CLOSE_CODE_REPLACED) {
-          // 다른 기기가 같은 역할로 접속함: 다시 접속하면 서로 밀어내기를 반복하므로 자동 재접속하지 않음
-          this.wasReplaced = true;
+        if (event.code === CLOSE_CODE_REPLACED || event.code === CLOSE_CODE_SLOT_BUSY) {
+          const issue: ConnectionIssue = event.code === CLOSE_CODE_REPLACED ? 'replaced' : 'slot_busy';
+          const isNewIssue = this.connectionIssue !== issue;
+          this.connectionIssue = issue;
           this.notifyStatus();
-          if (this.onConnectionReplaced) this.onConnectionReplaced();
+          if (isNewIssue && this.onConnectionIssue) this.onConnectionIssue(issue);
+          // 대체됨: 다시 접속하면 서로 밀어내므로 멈춤 / 자리 사용 중: 자리가 빌 때까지 천천히 재시도
+          if (issue === 'slot_busy') this.scheduleReconnect(SLOT_BUSY_RETRY_MS);
           return;
         }
         this.notifyStatus();
-        if (!this.reconnectTimer) {
-          this.reconnectTimer = setTimeout(() => {
-            this.reconnectTimer = null;
-            if (!this.isConnectedToServer) this.connect();
-          }, 3000);
-        }
+        this.scheduleReconnect(3000);
       };
 
       socket.onerror = () => {
@@ -248,6 +250,14 @@ export class InputManager {
       this.isConnectedToServer = false;
       this.notifyStatus();
     }
+  }
+
+  private scheduleReconnect(delayMs: number) {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.isConnectedToServer) this.connect();
+    }, delayMs);
   }
 
   public disconnect() {
@@ -285,12 +295,14 @@ export class InputManager {
       this.isP2Connected = Boolean(data.p2Connected);
       this.spectatorCount = Number(data.spectatorCount || 0);
       this.versusMode = (data.mode as 'VERSUS_PVP' | 'VERSUS_AI') || 'VERSUS_AI';
+      this.connectionIssue = null;
       if (this.onClientAssigned) {
         this.onClientAssigned(this.clientRole, this.playerId);
       }
       if (this.onMatchState) {
         this.onMatchState(parseMatchInfo(data));
       }
+      this.notifyStatus();
       return;
     }
 
@@ -364,6 +376,13 @@ export class InputManager {
     if (type === 'match_aborted') {
       if (this.onMatchAborted) {
         this.onMatchAborted(data as unknown as { matchId?: number; message?: string });
+      }
+      return;
+    }
+
+    if (type === 'match_clock') {
+      if (this.onMatchClock) {
+        this.onMatchClock({ matchId: data.matchId as number | undefined, remaining: Number(data.remaining ?? 0) });
       }
       return;
     }

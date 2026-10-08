@@ -5,6 +5,8 @@ export type GameState = 'READY' | 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 export type SoundPresetType = 'laser' | 'kinetic' | 'retro';
 
 export type ClientRole = 'P1' | 'P2' | 'SPECTATOR';
+/** replaced: 이 연결이 대체됨(자동 재접속 안 함) / slot_busy: 요청한 자리를 다른 기기가 사용 중(자리가 비면 자동 접속) */
+export type ConnectionIssue = 'replaced' | 'slot_busy';
 export type SpectatorCameraMode = 'STADIUM' | 'P1_VIEW' | 'P2_VIEW' | 'ORBIT';
 
 export type VoiceEventType = 

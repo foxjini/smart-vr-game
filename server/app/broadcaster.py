@@ -16,9 +16,15 @@ MAX_MATCH_DURATION = 600
 MAX_TARGET_POINTS = 10
 # 한 경기에서 서버가 기억하는 표적 수 상한 (메모리 보호용, 실제 경기는 수십 개 수준)
 MAX_TRACKED_TARGETS = 500
-# 다른 기기가 같은 플레이어 슬롯으로 접속해 기존 연결을 대체할 때의 종료 코드.
-# 클라이언트는 이 코드를 받으면 자동 재접속하지 않음 (두 기기가 서로 밀어내는 무한 반복 방지)
+# 경기 중 남은 시간을 모든 화면에 다시 알리는 간격(초).
+# 막 접속한 기기가 첫 화면을 그리느라 메시지를 늦게 처리해도 이 간격 안에 시계가 맞춰짐
+CLOCK_SYNC_INTERVAL = 5.0
+# 같은 기기(같은 세션)가 다시 접속해 이전 연결을 대체할 때 이전 소켓에 보내는 종료 코드.
+# 클라이언트는 이 코드를 받으면 자동 재접속하지 않음
 CLOSE_CODE_REPLACED = 4001
+# 요청한 플레이어 자리를 다른 기기가 사용 중일 때의 종료 코드.
+# 경기 중인 선수를 밀어내지 않고, 요청한 쪽이 자리가 빌 때까지 기다렸다가 다시 시도함
+CLOSE_CODE_SLOT_BUSY = 4002
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -170,11 +176,19 @@ class ConnectionManager:
                 self.session_to_player.pop(old_sid, None)
         return pid
 
-    async def _claim_slot(self, websocket: WebSocket, player_id: int, session_id: Optional[str]) -> None:
-        """플레이어 슬롯을 이 소켓에 배정. 다른 소켓이 점유 중이면 교체하고 기존 연결은 4001로 종료"""
+    async def _claim_slot(self, websocket: WebSocket, player_id: int, session_id: Optional[str]) -> bool:
+        """플레이어 슬롯을 이 소켓에 배정.
+        다른 기기(다른 세션)가 쓰고 있으면 빼앗지 않고 False를 반환해 경기 중인 선수를 보호함.
+        같은 기기의 재접속(같은 세션)이면 이전 소켓을 4001로 정리하고 슬롯을 넘겨받음."""
         own_slot = self._slot_of(websocket)
         if session_id is None and own_slot is not None:
             session_id = self.player_sessions.get(own_slot)
+
+        holder = self.player_clients.get(player_id)
+        if holder is not None and holder is not websocket:
+            if not session_id or self.player_sessions.get(player_id) != session_id:
+                return False
+
         self._release(websocket)
 
         old_ws = self.player_clients.get(player_id)
@@ -191,14 +205,25 @@ class ConnectionManager:
             self.session_to_player[session_id] = player_id
 
         if old_ws is not None and old_ws is not websocket:
-            # 기존 연결은 슬롯을 잃었다는 사실을 알 수 있도록 전용 코드로 종료
+            # 같은 기기가 새 연결로 돌아옴: 끊긴 채 남아 있던 이전 소켓 정리
             self.game_clients.discard(old_ws)
             self.spectator_clients.discard(old_ws)
-            logger.info(f"Player {player_id} slot taken over by a new connection (Session: {session_id})")
+            logger.info(f"Player {player_id} reconnected with a new socket (Session: {session_id})")
             try:
-                await old_ws.close(code=CLOSE_CODE_REPLACED, reason="replaced by another device")
+                await old_ws.close(code=CLOSE_CODE_REPLACED, reason="replaced by a newer connection")
             except Exception:
                 pass
+        return True
+
+    async def _reject_busy(self, websocket: WebSocket, role: str, session_id: Optional[str]) -> None:
+        """요청한 자리를 다른 기기가 쓰는 중: 알리고 연결을 닫음 (클라이언트는 잠시 후 다시 시도)"""
+        logger.info(f"{role} slot is in use by another device; asking session {session_id} to wait")
+        self.game_clients.discard(websocket)
+        await self._send(websocket, {"type": "slot_busy", "role": role})
+        try:
+            await websocket.close(code=CLOSE_CODE_SLOT_BUSY, reason="slot in use by another device")
+        except Exception:
+            pass
 
     def clean_dead_sockets(self):
         """죽은 소켓이나 비정상 종료된 연결을 슬롯에서 자동 청소"""
@@ -210,7 +235,8 @@ class ConnectionManager:
                 if pid:
                     logger.info(f"Auto-cleaned dead socket for Player {pid}")
 
-    async def connect_game(self, websocket: WebSocket, requested_role: Optional[str] = None, session_id: Optional[str] = None):
+    async def connect_game(self, websocket: WebSocket, requested_role: Optional[str] = None, session_id: Optional[str] = None) -> bool:
+        """게임 클라이언트 접속 처리. 요청한 플레이어 자리를 다른 기기가 쓰고 있으면 False (연결 종료됨)"""
         await websocket.accept()
         self.clean_dead_sockets()
         self.game_clients.add(websocket)
@@ -225,9 +251,12 @@ class ConnectionManager:
             # 관람 중계 모니터 요청: 플레이어 슬롯이 비어있어도 절대 가로채지 않고 무조건 관람객으로 배정
             self.spectator_clients.add(websocket)
         elif role in ("P1", "P2"):
-            # 1P/2P 전용 VR 헤드셋 요청: 해당 슬롯에 고정 배정 (이전 소켓은 교체)
+            # 1P/2P 전용 VR 헤드셋 요청: 해당 슬롯에 고정 배정.
+            # 같은 기기의 재접속은 자리를 돌려받고, 다른 기기가 쓰는 중이면 빼앗지 않고 대기시킴
             player_id = 1 if role == "P1" else 2
-            await self._claim_slot(websocket, player_id, session_id)
+            if not await self._claim_slot(websocket, player_id, session_id):
+                await self._reject_busy(websocket, role, session_id)
+                return False
         else:
             # 역할 미지정 일반 접속 (같은 세션 복귀 → 빈 슬롯 선착순 → 관람객)
             if session_id and session_id in self.session_to_player:
@@ -237,10 +266,9 @@ class ConnectionManager:
             elif 2 not in self.player_clients:
                 player_id = 2
 
-            if player_id is None:
+            if player_id is None or not await self._claim_slot(websocket, player_id, session_id):
+                player_id = None
                 self.spectator_clients.add(websocket)
-            else:
-                await self._claim_slot(websocket, player_id, session_id)
 
         assigned_role = f"P{player_id}" if player_id else "SPECTATOR"
         logger.info(f"Client connected as {assigned_role} (PlayerId: {player_id}, Session: {session_id}). Active Players: {list(self.player_clients.keys())}, Spectators: {len(self.spectator_clients)}")
@@ -256,6 +284,7 @@ class ConnectionManager:
 
         # 2. 모든 클라이언트에 방 상태 브로드캐스트
         await self.broadcast_room_state()
+        return True
 
     def disconnect_game(self, websocket: WebSocket):
         known = (
@@ -472,7 +501,10 @@ class ConnectionManager:
             self.spectator_clients.add(websocket)
         else:
             player_id = 1 if role == "P1" else 2
-            await self._claim_slot(websocket, player_id, session_id)
+            if not await self._claim_slot(websocket, player_id, session_id):
+                # 다른 기기가 쓰는 자리: 현재 역할을 유지하고 알리기만 함
+                await self._send(websocket, {"type": "slot_busy", "role": role})
+                return
 
         assigned_role = f"P{player_id}" if player_id else "SPECTATOR"
         logger.info(f"Role changed for client to {assigned_role} (PlayerId: {player_id})")
@@ -503,7 +535,13 @@ class ConnectionManager:
             if remaining <= 0:
                 await self._finish_match(match_id)
                 return
-            await asyncio.sleep(remaining)
+            await asyncio.sleep(min(remaining, CLOCK_SYNC_INTERVAL))
+            if self.is_match_active and self.match_id == match_id and not self.is_match_paused and self._remaining() > 0.5:
+                await self.broadcast_to_all({
+                    "type": "match_clock",
+                    "matchId": match_id,
+                    "remaining": round(self._remaining(), 2),
+                })
 
     async def _finish_match(self, match_id: int) -> None:
         """경기 시간 종료: 서버 집계 점수로 승패를 판정해 모든 클라이언트에 한 번만 방송"""

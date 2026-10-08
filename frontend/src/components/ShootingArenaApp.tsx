@@ -21,6 +21,7 @@ import {
   ClientRole,
   SpectatorCameraMode,
   VersusMatchStats,
+  ConnectionIssue,
 } from '@/types';
 
 interface NavigatorWithXR {
@@ -69,7 +70,7 @@ export default function ShootingArenaApp() {
 
   // 시스템 및 통신 상태
   const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
-  const [isReplaced, setIsReplaced] = useState<boolean>(false);
+  const [connectionIssue, setConnectionIssue] = useState<ConnectionIssue | null>(null);
   const [clientRole, setClientRole] = useState<ClientRole>(readInitialRole);
   const [spectatorCameraMode, setSpectatorCameraMode] = useState<SpectatorCameraMode>('STADIUM');
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
@@ -204,7 +205,7 @@ export default function ShootingArenaApp() {
     inputMgr.onStatusChange = (status, wsConnected) => {
       setSystemStatus(status);
       setIsWsConnected(wsConnected);
-      setIsReplaced(inputMgr.wasReplaced);
+      setConnectionIssue(inputMgr.connectionIssue);
       setIsP2Connected(inputMgr.isP2Connected);
     };
 
@@ -445,7 +446,7 @@ export default function ShootingArenaApp() {
           difficulty={currentDifficulty}
           systemStatus={systemStatus}
           isWsConnected={isWsConnected}
-          isReplaced={isReplaced}
+          connectionIssue={connectionIssue}
           isPlaying={isPlaying}
           isPaused={isPaused}
           onStartGame={handleStartGame}
@@ -481,7 +482,7 @@ export default function ShootingArenaApp() {
         clientRole={clientRole}
         versusMode={versusStats.mode}
         isP2Connected={isP2Connected}
-        isReplaced={isReplaced}
+        connectionIssue={connectionIssue}
       />
 
       {/* 4. 사격장 설정 모달 */}

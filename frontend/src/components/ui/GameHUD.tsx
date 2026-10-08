@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { GameStats, SystemStatus, VersusMatchStats, ClientRole, SpectatorCameraMode, Difficulty } from '@/types';
+import { GameStats, SystemStatus, VersusMatchStats, ClientRole, SpectatorCameraMode, Difficulty, ConnectionIssue } from '@/types';
 import {
   Sliders,
   Play,
@@ -23,8 +23,8 @@ interface GameHUDProps {
   clientRole: ClientRole;
   difficulty?: Difficulty;
   isWsConnected: boolean;
-  /** 다른 기기가 같은 역할로 접속해 이 기기의 연결이 해제됨 */
-  isReplaced?: boolean;
+  /** 역할 자리 관련 연결 문제 (다른 기기가 사용 중 등) */
+  connectionIssue?: ConnectionIssue | null;
   isPlaying: boolean;
   isPaused?: boolean;
   onStartGame: () => void;
@@ -45,7 +45,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   clientRole,
   difficulty = 'normal',
   isWsConnected,
-  isReplaced = false,
+  connectionIssue = null,
   isPlaying,
   isPaused = false,
   onStartGame,
@@ -100,7 +100,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span className={`indicator-dot ${isWsConnected ? 'dot-green' : 'dot-red'}`} />
               <span className="text-gray-400">서버:</span>
               <span className={isWsConnected ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
-                {isWsConnected ? '정상 연결' : isReplaced ? '다른 기기가 같은 역할로 접속해 연결 해제됨' : '오프라인'}
+                {isWsConnected
+                  ? '정상 연결'
+                  : connectionIssue === 'slot_busy'
+                  ? '이 역할은 다른 기기가 사용 중 · 자리가 비면 자동 접속'
+                  : connectionIssue === 'replaced'
+                  ? '같은 역할로 새로 접속되어 연결 해제됨'
+                  : '오프라인'}
               </span>
             </div>
 
