@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
     '10.*.*.*',
     '172.*.*.*',
   ],
+  // 전시장에서는 npm run dev로 띄우므로, 관전 중계 화면에 Next.js 개발 표시가 뜨지 않도록 숨김
+  // (컴파일·런타임 오류는 계속 표시됨)
+  devIndicators: false,
 };
 
 export default nextConfig;

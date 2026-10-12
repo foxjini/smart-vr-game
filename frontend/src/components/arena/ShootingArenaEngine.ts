@@ -21,6 +21,7 @@ import { LeaderboardManager } from '@/core/leaderboard/LeaderboardManager';
 import { InputManager } from '@/core/input/InputManager';
 import { CyberAIRival, TargetObjectRef } from '@/core/ai/CyberAIRival';
 import { SpectatorCameraController } from '@/core/spectator/SpectatorCameraController';
+import { PerfPanel } from './visual/debug/PerfPanel';
 
 export const TARGET_KEYWORDS: TargetKeyword[] = ['정보', '통신', '제어', '회로', '인공', '전자'];
 
@@ -219,6 +220,8 @@ export class ShootingArenaEngine {
   private poseSendTimer: number = 0;
   private lastFireTime: number = 0;
   private raycaster = new THREE.Raycaster();
+  /** 개발용 성능 표시 (?debug=perf일 때만) */
+  private perfPanel?: PerfPanel;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -307,6 +310,10 @@ export class ShootingArenaEngine {
       this.vrButtonElement = vrBtn;
     } catch (e) {
       console.warn('WebXR VRButton attach warning:', e);
+    }
+
+    if (PerfPanel.isEnabled()) {
+      this.perfPanel = new PerfPanel(this.renderer);
     }
 
     // 8. 렌더 루프 시작
@@ -2199,6 +2206,7 @@ export class ShootingArenaEngine {
 
     // 7. 렌더
     this.renderer.render(this.scene, this.camera);
+    this.perfPanel?.update();
   };
 
   private onPointerMove = (e: PointerEvent) => {
@@ -2312,6 +2320,7 @@ export class ShootingArenaEngine {
     if (this.vrButtonElement && this.vrButtonElement.parentNode) {
       this.vrButtonElement.parentNode.removeChild(this.vrButtonElement);
     }
+    this.perfPanel?.dispose();
     if (this.container && this.renderer.domElement) {
       this.container.removeChild(this.renderer.domElement);
     }
