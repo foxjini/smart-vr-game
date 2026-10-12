@@ -4,7 +4,7 @@ import React from 'react';
 import { Difficulty } from '@/types';
 import { DIFFICULTY_NAME } from '@/constants/labels';
 import { CompareRow, Panel, TeamPlate, cx } from '@/components/ui/kit';
-import { MatchResultSummary, slotName, winnerBannerText, winnerHeadline } from '@/components/ui/matchInfo';
+import { MatchResultSummary, shownAccuracy, slotName, winnerBannerText, winnerHeadline } from '@/components/ui/matchInfo';
 import { useSecondsLeft, useVisibleFor } from '../hooks';
 
 interface BroadcastResultProps {
@@ -71,7 +71,7 @@ export function BroadcastResult({ result, until, difficulty }: BroadcastResultPr
 
           <div className="mt-10 flex flex-col gap-5">
             <CompareRow size="xl" label="명중" left={result.p1Hits} right={result.p2Hits} />
-            <CompareRow size="xl" label="명중률" left={result.p1Accuracy} right={result.p2Accuracy} unit="%" />
+            <CompareRow size="xl" label="명중률" left={shownAccuracy(result.p1Accuracy, result.p1Shots)} right={shownAccuracy(result.p2Accuracy, result.p2Shots)} unit="%" />
             <CompareRow size="xl" label="최고 연속 명중" left={result.p1MaxCombo} right={result.p2MaxCombo} />
           </div>
 

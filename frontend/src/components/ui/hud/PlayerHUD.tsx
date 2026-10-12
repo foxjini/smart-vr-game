@@ -244,7 +244,7 @@ function AmmoPanel({ stats, slot }: { stats: GameStats; slot: 1 | 2 }) {
       </div>
       {empty && <p className="mt-1.5 text-[12px] font-semibold text-danger">탄약 없음 · R·우클릭·그립으로 재장전</p>}
       <div className="mt-2.5 grid grid-cols-3 gap-2 border-t border-line pt-2.5">
-        <MiniStat label="명중률" value={`${stats.accuracy}`} unit="%" />
+        <MiniStat label="명중률" value={stats.shotsFired > 0 ? `${stats.accuracy}` : '-'} unit={stats.shotsFired > 0 ? '%' : undefined} />
         <MiniStat label="명중" value={`${stats.hits}`} />
         <MiniStat label="콤보" value={stats.combo > 0 ? `x${stats.combo}` : '-'} highlight={stats.combo >= 3} />
       </div>

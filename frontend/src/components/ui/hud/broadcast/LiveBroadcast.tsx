@@ -5,7 +5,7 @@ import { Bot, Pause, Video } from 'lucide-react';
 import { Difficulty, SpectatorCameraMode, VersusMatchStats } from '@/types';
 import { CAMERA_NAME, CAMERA_ORDER, DIFFICULTY_NAME } from '@/constants/labels';
 import { Panel, Pill, cx } from '@/components/ui/kit';
-import { Slot, slotName } from '@/components/ui/matchInfo';
+import { Slot, shownAccuracy, slotName } from '@/components/ui/matchInfo';
 import { ScoreBug } from '../ScoreBug';
 import { Logo } from './Logo';
 
@@ -61,7 +61,7 @@ export function LiveBroadcast({ versusStats, timeRemaining, isPaused, aiSlot, di
           isAI={aiSlot === 1}
           aiLabel={DIFFICULTY_NAME[difficulty]}
           hits={versusStats.p1Hits}
-          accuracy={versusStats.p1Accuracy}
+          accuracy={shownAccuracy(versusStats.p1Accuracy, versusStats.p1Shots)}
           combo={versusStats.p1Combo}
         />
       </div>
@@ -72,7 +72,7 @@ export function LiveBroadcast({ versusStats, timeRemaining, isPaused, aiSlot, di
           isAI={aiSlot === 2}
           aiLabel={DIFFICULTY_NAME[difficulty]}
           hits={versusStats.p2Hits}
-          accuracy={versusStats.p2Accuracy}
+          accuracy={shownAccuracy(versusStats.p2Accuracy, versusStats.p2Shots)}
           combo={versusStats.p2Combo}
         />
       </div>
@@ -94,7 +94,8 @@ interface PlayerCardProps {
   isAI: boolean;
   aiLabel: string;
   hits: number;
-  accuracy: number;
+  /** null이면 아직 쏘지 않음 ('-') */
+  accuracy: number | null;
   combo: number;
 }
 
@@ -114,7 +115,7 @@ function PlayerCard({ slot, name, isAI, aiLabel, hits, accuracy, combo }: Player
       </div>
       <div className={cx('grid grid-cols-3 gap-4 px-7 pb-6 pt-5', right && 'text-right')}>
         <CardStat label="명중" value={hits} />
-        <CardStat label="명중률" value={accuracy} unit="%" />
+        <CardStat label="명중률" value={accuracy ?? '-'} unit={accuracy === null ? undefined : '%'} />
         <CardStat label="연속 명중" value={combo > 0 ? `x${combo}` : '-'} highlight={combo >= 3} />
       </div>
     </Panel>

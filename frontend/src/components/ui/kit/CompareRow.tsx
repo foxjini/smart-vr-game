@@ -22,21 +22,24 @@ const SIZE = {
 
 interface CompareRowProps {
   label: string;
-  left: number;
-  right: number;
+  /** null이면 '-'로 표시하고 막대를 비움 (예: 한 발도 쏘지 않은 명중률) */
+  left: number | null;
+  right: number | null;
   unit?: string;
   size?: keyof typeof SIZE;
 }
 
 /** 1P(왼쪽)·2P(오른쪽) 기록 비교 막대. 가운데에 항목 이름, 더 높은 쪽 숫자를 팀 색으로 강조 */
-export function CompareRow({ label, left, right, unit, size = 'md' }: CompareRowProps) {
+export function CompareRow({ label, left: leftValue, right: rightValue, unit, size = 'md' }: CompareRowProps) {
   const s = SIZE[size];
+  const left = leftValue ?? 0;
+  const right = rightValue ?? 0;
   const max = Math.max(left, right, 1);
   return (
     <div className={cx('grid items-center', s.grid)}>
       <span className={cx('text-right font-num font-bold leading-none tabular-nums', s.value, left > right ? 'text-p1' : 'text-fg')}>
-        {left}
-        {unit && <span className={cx('text-fg-2', s.unit)}>{unit}</span>}
+        {leftValue ?? '-'}
+        {unit && leftValue !== null && <span className={cx('text-fg-2', s.unit)}>{unit}</span>}
       </span>
       <div className={cx('flex justify-end overflow-hidden rounded-full bg-white/8', s.bar)}>
         <div
@@ -52,8 +55,8 @@ export function CompareRow({ label, left, right, unit, size = 'md' }: CompareRow
         />
       </div>
       <span className={cx('font-num font-bold leading-none tabular-nums', s.value, right > left ? 'text-p2' : 'text-fg')}>
-        {right}
-        {unit && <span className={cx('text-fg-2', s.unit)}>{unit}</span>}
+        {rightValue ?? '-'}
+        {unit && rightValue !== null && <span className={cx('text-fg-2', s.unit)}>{unit}</span>}
       </span>
     </div>
   );

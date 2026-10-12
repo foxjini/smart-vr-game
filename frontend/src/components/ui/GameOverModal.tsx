@@ -6,7 +6,7 @@ import { GameStats, Difficulty, ThemeType, ClientRole } from '@/types';
 import { LeaderboardManager } from '@/core/leaderboard/LeaderboardManager';
 import { DIFFICULTY_NAME } from '@/constants/labels';
 import { Button, CompareRow, ModalShell, Pill, TeamPlate, cx } from '@/components/ui/kit';
-import { MatchResultSummary, localSlotOf, slotName, winnerBannerText } from '@/components/ui/matchInfo';
+import { MatchResultSummary, localSlotOf, shownAccuracy, slotName, winnerBannerText } from '@/components/ui/matchInfo';
 
 interface GameOverModalProps {
   /** 내 최종 기록 (순위표 등록용) */
@@ -54,7 +54,8 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
     const newEntry = LeaderboardManager.getInstance().addEntry({
       playerName: playerName.trim(),
       score: stats.score,
-      accuracy: stats.accuracy,
+      // 한 발도 쏘지 않은 기록은 100% 대신 0% (순위표에는 숫자만 저장)
+      accuracy: stats.shotsFired > 0 ? stats.accuracy : 0,
       maxCombo: stats.maxCombo,
       difficulty,
       theme,
@@ -132,7 +133,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
       {/* 기록 비교 */}
       <div className="mt-5 flex flex-col gap-3 rounded-xl border border-line bg-ink/40 px-4 py-4">
         <CompareRow label="명중" left={result.p1Hits} right={result.p2Hits} />
-        <CompareRow label="명중률" left={result.p1Accuracy} right={result.p2Accuracy} unit="%" />
+        <CompareRow label="명중률" left={shownAccuracy(result.p1Accuracy, result.p1Shots)} right={shownAccuracy(result.p2Accuracy, result.p2Shots)} unit="%" />
         <CompareRow label="최고 연속" left={result.p1MaxCombo} right={result.p2MaxCombo} />
       </div>
 

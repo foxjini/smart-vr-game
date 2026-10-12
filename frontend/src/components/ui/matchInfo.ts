@@ -15,6 +15,9 @@ export interface MatchResultSummary {
   p2Accuracy: number;
   p1MaxCombo: number;
   p2MaxCombo: number;
+  /** 발사 수 (이 항목이 없는 예전 기록은 명중률을 숫자로 표시) */
+  p1Shots?: number;
+  p2Shots?: number;
   aiSlot: Slot | null;
   endedAt: number;
 }
@@ -69,6 +72,14 @@ export function winnerHeadline(winner: Winner, aiSlot: Slot | null): string {
   const slot: Slot = winner === 'P1' ? 1 : 2;
   if (slot === aiSlot) return `${AI_NAME} 승리`;
   return `${slot}P 승리`;
+}
+
+/**
+ * 화면에 보일 명중률: 한 발도 쏘지 않았으면 null('-'로 표시).
+ * 엔진은 0발일 때 100으로 계산하므로 화면에서만 바꿈
+ */
+export function shownAccuracy(accuracy: number, shots: number | undefined): number | null {
+  return shots === 0 ? null : accuracy;
 }
 
 /** 남은 시간 표시 '0:42' */

@@ -911,7 +911,7 @@ export class ShootingArenaEngine {
 
       ctx.font = `500 24px ${FONT_UI}`;
       ctx.fillStyle = cssColor(PALETTE.fg2);
-      ctx.fillText(`명중: ${this.stats.hits}회 / 명중률: ${this.stats.accuracy}%`, 260, 360);
+      ctx.fillText(`명중: ${this.stats.hits}회 / 명중률: ${this.stats.shotsFired > 0 ? `${this.stats.accuracy}%` : '-'}`, 260, 360);
       ctx.fillText(`최대 콤보: ${this.stats.maxCombo}x`, 260, 410);
 
       // 우측 P2 스탯 박스
@@ -934,7 +934,7 @@ export class ShootingArenaEngine {
 
       ctx.font = `500 24px ${FONT_UI}`;
       ctx.fillStyle = cssColor(PALETTE.fg2);
-      ctx.fillText(`명중: ${this.p2Stats.hits}회 / 명중률: ${this.p2Stats.accuracy}%`, 760, 360);
+      ctx.fillText(`명중: ${this.p2Stats.hits}회 / 명중률: ${this.p2Stats.shotsFired > 0 ? `${this.p2Stats.accuracy}%` : '-'}`, 760, 360);
       ctx.fillText(`최대 콤보: ${this.p2Stats.maxCombo}x`, 760, 410);
 
       // 하단 안내: 2대 명확한 선택지 제공
@@ -1442,11 +1442,13 @@ export class ShootingArenaEngine {
       p1Combo: this.stats.combo,
       p1Accuracy: this.stats.accuracy,
       p1MaxCombo: this.stats.maxCombo,
+      p1Shots: this.stats.shotsFired,
       p2Score: this.p2Stats.score,
       p2Hits: this.p2Stats.hits,
       p2Combo: this.p2Stats.combo,
       p2Accuracy: this.p2Stats.accuracy,
       p2MaxCombo: this.p2Stats.maxCombo,
+      p2Shots: this.p2Stats.shotsFired,
       spectatorCount: this.inputManager.spectatorCount,
     };
   }

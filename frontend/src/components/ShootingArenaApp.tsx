@@ -159,6 +159,8 @@ export default function ShootingArenaApp() {
     p2Hits: 0,
     p2Combo: 0,
     p2Accuracy: 100,
+    p1Shots: 0,
+    p2Shots: 0,
     spectatorCount: 0,
   });
 
@@ -257,6 +259,8 @@ export default function ShootingArenaApp() {
         p2Accuracy: v.p2Accuracy,
         p1MaxCombo: v.p1MaxCombo ?? 0,
         p2MaxCombo: v.p2MaxCombo ?? 0,
+        p1Shots: v.p1Shots,
+        p2Shots: v.p2Shots,
         aiSlot: aiSlotOf(v.mode, im.isP1Connected, im.isP2Connected, engine.clientRole),
         endedAt: Date.now(),
       };
