@@ -14,12 +14,12 @@
       --bg-surface: #0c1017;
       --bg-card: rgba(15, 20, 32, 0.78);
       --bg-card-hover: rgba(22, 30, 48, 0.9);
-      --border-color: rgba(0, 240, 255, 0.2);
-      --border-accent: rgba(255, 0, 85, 0.3);
-      --cyan: #00f0ff;
-      --cyan-glow: rgba(0, 240, 255, 0.35);
-      --magenta: #ff0055;
-      --magenta-glow: rgba(255, 0, 85, 0.35);
+      --border-color: rgba(34, 211, 238, 0.2);
+      --border-accent: rgba(255, 61, 200, 0.3);
+      --cyan: #22d3ee;
+      --cyan-glow: rgba(34, 211, 238, 0.35);
+      --magenta: #ff3dc8;
+      --magenta-glow: rgba(255, 61, 200, 0.35);
       --yellow: #ffe600;
       --yellow-glow: rgba(255, 230, 0, 0.3);
       --green: #10b981;
@@ -44,8 +44,8 @@
     body {
       background-color: var(--bg-dark);
       background-image: 
-        radial-gradient(circle at 10% 10%, rgba(0, 240, 255, 0.08) 0%, transparent 45%),
-        radial-gradient(circle at 90% 90%, rgba(255, 0, 85, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 10% 10%, rgba(34, 211, 238, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 90% 90%, rgba(255, 61, 200, 0.08) 0%, transparent 45%),
         linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
       background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
@@ -113,7 +113,7 @@
       font-size: 0.72rem;
       padding: 0.2rem 0.55rem;
       border-radius: 999px;
-      background: rgba(0, 240, 255, 0.12);
+      background: rgba(34, 211, 238, 0.12);
       border: 1px solid var(--cyan);
       color: var(--cyan);
       font-weight: 700;
@@ -139,7 +139,7 @@
 
     nav a:hover {
       color: var(--cyan);
-      background: rgba(0, 240, 255, 0.12);
+      background: rgba(34, 211, 238, 0.12);
     }
 
     nav a.highlight-nav {
@@ -172,15 +172,15 @@
       align-items: center;
       gap: 0.5rem;
       padding: 0.35rem 1.25rem;
-      background: rgba(255, 0, 85, 0.12);
-      border: 1px solid rgba(255, 0, 85, 0.4);
+      background: rgba(255, 61, 200, 0.12);
+      border: 1px solid rgba(255, 61, 200, 0.4);
       border-radius: 999px;
       font-size: 0.85rem;
       font-family: var(--font-mono);
       color: #ff4d88;
       margin-bottom: 1.5rem;
       font-weight: 700;
-      box-shadow: 0 0 15px rgba(255, 0, 85, 0.15);
+      box-shadow: 0 0 15px rgba(255, 61, 200, 0.15);
     }
 
     .hero h1 {
@@ -250,18 +250,18 @@
     .btn-secondary:hover {
       border-color: var(--cyan);
       color: var(--cyan);
-      background: rgba(0, 240, 255, 0.1);
+      background: rgba(34, 211, 238, 0.1);
       transform: translateY(-2px);
     }
 
     .btn-magenta {
-      background: rgba(255, 0, 85, 0.15);
+      background: rgba(255, 61, 200, 0.15);
       color: #ff4d88;
       border: 1px solid var(--border-accent);
     }
 
     .btn-magenta:hover {
-      background: rgba(255, 0, 85, 0.28);
+      background: rgba(255, 61, 200, 0.28);
       border-color: var(--magenta);
       color: #fff;
       transform: translateY(-2px);
@@ -301,7 +301,7 @@
 
     .ip-input {
       background: #05070b;
-      border: 1px solid rgba(0, 240, 255, 0.4);
+      border: 1px solid rgba(34, 211, 238, 0.4);
       color: #fff;
       font-family: var(--font-mono);
       font-size: 0.92rem;
@@ -343,7 +343,7 @@
     .search-input:focus {
       outline: none;
       border-color: var(--cyan);
-      box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+      box-shadow: 0 0 10px rgba(34, 211, 238, 0.3);
     }
 
     /* 섹션 스타일 */
@@ -438,13 +438,13 @@
 
     .card:hover {
       border-color: var(--cyan);
-      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.12);
+      box-shadow: 0 10px 30px rgba(34, 211, 238, 0.12);
       transform: translateY(-3px);
     }
 
     .card.highlight-magenta:hover {
       border-color: var(--magenta);
-      box-shadow: 0 10px 30px rgba(255, 0, 85, 0.15);
+      box-shadow: 0 10px 30px rgba(255, 61, 200, 0.15);
     }
 
     .card.highlight-yellow:hover {
@@ -464,13 +464,13 @@
     }
 
     .badge-cyan {
-      background: rgba(0, 240, 255, 0.15);
+      background: rgba(34, 211, 238, 0.15);
       border: 1px solid var(--cyan);
       color: var(--cyan);
     }
 
     .badge-magenta {
-      background: rgba(255, 0, 85, 0.15);
+      background: rgba(255, 61, 200, 0.15);
       border: 1px solid var(--magenta);
       color: var(--magenta);
     }
@@ -544,7 +544,7 @@
     .copy-btn:hover {
       color: var(--cyan);
       border-color: var(--cyan);
-      background: rgba(0, 240, 255, 0.08);
+      background: rgba(34, 211, 238, 0.08);
     }
 
     pre {
@@ -584,7 +584,7 @@
 
     .step-item:hover {
       border-color: var(--cyan);
-      box-shadow: 0 6px 25px rgba(0, 240, 255, 0.09);
+      box-shadow: 0 6px 25px rgba(34, 211, 238, 0.09);
     }
 
     .step-number {
@@ -592,7 +592,7 @@
       font-size: 1.6rem;
       font-weight: 900;
       color: var(--cyan);
-      background: rgba(0, 240, 255, 0.1);
+      background: rgba(34, 211, 238, 0.1);
       width: 54px;
       height: 54px;
       border-radius: 12px;
@@ -600,8 +600,8 @@
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      border: 1px solid rgba(0, 240, 255, 0.35);
-      box-shadow: 0 0 15px rgba(0, 240, 255, 0.15);
+      border: 1px solid rgba(34, 211, 238, 0.35);
+      box-shadow: 0 0 15px rgba(34, 211, 238, 0.15);
     }
 
     .step-content {
@@ -635,8 +635,8 @@
 
     /* 콜아웃 알림 상자 */
     .callout {
-      background: rgba(0, 240, 255, 0.06);
-      border: 1px solid rgba(0, 240, 255, 0.3);
+      background: rgba(34, 211, 238, 0.06);
+      border: 1px solid rgba(34, 211, 238, 0.3);
       border-left: 4px solid var(--cyan);
       border-radius: 8px;
       padding: 1.1rem 1.35rem;
@@ -653,8 +653,8 @@
     }
 
     .callout-magenta {
-      background: rgba(255, 0, 85, 0.06);
-      border-color: rgba(255, 0, 85, 0.3);
+      background: rgba(255, 61, 200, 0.06);
+      border-color: rgba(255, 61, 200, 0.3);
       border-left-color: var(--magenta);
     }
 
@@ -703,7 +703,7 @@
     }
 
     tr:hover td {
-      background: rgba(0, 240, 255, 0.035);
+      background: rgba(34, 211, 238, 0.035);
     }
 
     .key-badge {
@@ -752,7 +752,7 @@
     }
 
     .faq-item:hover {
-      border-color: rgba(0, 240, 255, 0.5);
+      border-color: rgba(34, 211, 238, 0.5);
     }
 
     .faq-question {
@@ -767,7 +767,7 @@
     }
 
     .faq-question:hover {
-      background: rgba(0, 240, 255, 0.04);
+      background: rgba(34, 211, 238, 0.04);
     }
 
     .faq-arrow {
@@ -916,7 +916,7 @@
     <!-- ================================================================= -->
     <section id="quickstart">
       <h2 class="section-title"><span class="icon">⚡</span> 빠른 시작 가이드 (Quick Start - 3분 요약)</h2>
-      <p class="section-desc">이미 환경 설정이 완료된 상태에서 게임을 바로 구동하는 3단계 요약입니다.</p>
+      <p class="section-desc">이미 환경 설정이 완료된 상태에서 게임을 바로 구동하는 3단계 요약입니다. <b>코드를 새로 받았다면 STEP 2 전에 <code>npm install</code>을 한 번 실행</b>하세요.</p>
 
       <div class="grid-3">
         <div class="card highlight-cyan">
@@ -960,7 +960,7 @@
             </div>
             <pre><code>http://<span class="dynamic-ip">192.168.1.150</span>:3000</code></pre>
           </div>
-          <span style="font-size:0.85rem; color:var(--yellow)">✓ [ENTER VR] 터치 후 방아쇠 당겨 즉시 시작!</span>
+          <span style="font-size:0.85rem; color:var(--yellow)">✓ [VR 배틀 시작] 누르면 VR에서 바로 경기 시작!</span>
         </div>
       </div>
     </section>
@@ -980,7 +980,7 @@
             <h3>사전 필수 런타임 및 네트워크 환경 준비</h3>
             <p>본 게임 시스템을 원활하게 구동하기 위해 아래 런타임 및 네트워크 조건을 확인합니다.</p>
             <ul class="bullet-check">
-              <li><b>Node.js:</b> v18.17.0 이상 권장 (LTS 버전, 터미널에서 <code>node -v</code> 로 확인)</li>
+              <li><b>Node.js:</b> v20.9 이상 (Next.js 16 필수 조건, v22 LTS 권장, 터미널에서 <code>node -v</code> 로 확인)</li>
               <li><b>Python:</b> v3.10 이상 권장 (터미널에서 <code>python --version</code> 으로 확인)</li>
               <li><b>동일 Wi-Fi 네트워크:</b> 개발 PC와 Meta Quest 2 헤드셋이 <b>반드시 동일한 공유기(같은 서브넷)</b>에 연결되어 있어야 합니다.</li>
             </ul>
@@ -1034,7 +1034,7 @@ cd server
               <pre><code><span class="comment"># 1. 프론트엔드 디렉토리 이동</span>
 cd frontend
 
-<span class="comment"># 2. npm 패키지 의존성 설치</span>
+<span class="comment"># 2. npm 패키지 의존성 설치 (처음 한 번 + 코드를 새로 받을 때마다 한 번)</span>
 <span class="cmd">npm install</span>
 
 <span class="comment"># 3. 개발 서버 구동 (포트 3000)</span>
@@ -1044,7 +1044,12 @@ cd frontend
               <b>⚙️ Next.js 서브넷 IP 허용 설정 (HMR 및 Cross-Origin 차단 방지):</b><br>
               <code>frontend/next.config.ts</code> 파일의 <code>allowedDevOrigins</code> 목록에 개발 PC의 IP 대역이 포함되어 있으므로, 사설 네트워크의 Quest 2 및 모바일 기기에서도 리소스 차단 없이 100% 정상 로드됩니다.
             </div>
-            <p>서버가 구동되면 개발 PC 브라우저에서 <code>http://localhost:3000</code>으로 접속하여 네온 글래스모피즘 메인 메뉴 화면이 나타나는지 확인합니다.</p>
+            <div class="callout">
+              <div class="callout-title">💡 업데이트 후 npm install · 인터넷 없이 실행</div>
+              VR 안 글자를 그리는 <code>troika-three-text</code> 패키지가 추가되었습니다. 예전 <code>node_modules</code>로 실행하면 <code>Module not found: troika-three-text</code> 오류가 나므로, 코드를 새로 받았다면 <code>npm install</code>을 한 번 실행하세요.<br>
+              화면 글꼴(Pretendard · Rajdhani)은 <code>frontend/public/fonts/</code>에 내장되어 있어, 설치가 끝난 뒤에는 인터넷이 없는 전시장에서도 그대로 보입니다.
+            </div>
+            <p>서버가 구동되면 개발 PC 브라우저에서 <code>http://localhost:3000</code>으로 접속하여 메인 메뉴(게임 소개 · 대결 규칙 · 조작 방법)가 나타나는지 확인합니다.</p>
           </div>
         </div>
 
@@ -1145,10 +1150,10 @@ New-NetFirewallRule -DisplayName "Nunchuk VR Relay (8000)" -Direction Inbound -L
               <pre><code>http://<span class="dynamic-ip">192.168.1.150</span>:3000</code></pre>
             </div>
             <div class="callout callout-magenta">
-              <div class="callout-title">🥽 즉시 VR 사격장으로 진입하는 2가지 방법</div>
-              1) 화면 중앙의 메인 메뉴 모달에서 대형 <b>[🥽 ENTER VR (Quest 2 대결 입장)]</b> 버튼을 터치하거나,<br>
-              2) 화면 최하단에 항상 떠 있는 Three.js 공식 <b>[ENTER VR]</b> 버튼을 터치합니다.<br>
-              헤드셋 공간 권한 허용 팝업이 뜨면 <b>[허용]</b>을 선택하세요. 즉시 360도 네온 아레나로 시야가 전환됩니다!
+              <div class="callout-title">🥽 VR 사격장으로 들어가는 방법</div>
+              메인 메뉴의 <b>[VR 배틀 시작]</b> 버튼(또는 화면 오른쪽 위 <b>[VR 시작]</b>)을 터치합니다.<br>
+              헤드셋 공간 권한 허용 팝업이 뜨면 <b>[허용]</b>을 선택하세요. 경기장으로 시야가 바뀌면서 바로 경기가 시작됩니다!<br>
+              주소 끝에 <code>?role=p1</code>(2P 헤드셋은 <code>?role=p2</code>)을 붙여 접속하면 이 헤드셋의 역할이 고정됩니다.
             </div>
           </div>
         </div>
@@ -1212,16 +1217,16 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
     <!-- ================================================================= -->
     <section id="gameplay">
       <h2 class="section-title"><span class="icon">🎮</span> 4. 게임 종합 사용 설명서 (Comprehensive Gameplay Guide)</h2>
-      <p class="section-desc">오락실 체감형 건슈팅 시작 방식, 4가지 컨트롤러 조작법, 10발 탄창 및 재장전 룰, 가상 블래스터 OLED 디스플레이를 완벽 가이드합니다.</p>
+      <p class="section-desc">VR 경기 시작·종료 흐름, 4가지 컨트롤러 조작법, 10발 탄창 및 재장전 룰, 가상 블래스터 OLED 디스플레이를 안내합니다.</p>
 
-      <!-- 4-1 아케이드 UX: 방아쇠 당겨 즉시 시작 -->
+      <!-- 4-1 VR 경기 흐름 -->
       <div class="card highlight-magenta" style="margin-bottom:2rem">
-        <span class="card-badge badge-magenta">ARCADE GUN-SHOOTING UX</span>
-        <h3>⚡ "방아쇠 당겨 즉시 시작" (Pull Trigger to Start)</h3>
+        <span class="card-badge badge-magenta">VR MATCH FLOW</span>
+        <h3>⚡ VR에 들어가면 바로 시작, 끝나면 방아쇠로 다시</h3>
         <p>
-          VR 헤드셋을 착용한 상태에서 복잡한 2D 모달 버튼을 레이저로 조준해 마우스 클릭하듯 터치할 필요가 없습니다!<br>
-          VR 사격장에 진입하면 눈앞에 3D 홀로그램 배너 <b>[PULL TRIGGER TO START]</b>가 대기하고 있습니다.<br>
-          <b>오른손 터치 컨트롤러의 검지 방아쇠(Trigger)를 1회 당기는 순간</b>, 홀로그램이 파티클로 사라지며 즉시 60초 카운트다운과 함께 작전이 개시됩니다.
+          VR 헤드셋을 쓴 채로 2D 메뉴 버튼을 조준할 필요가 없습니다.<br>
+          VR 사격장에 들어가면 바로 경기가 시작되고, 게이트 위 점수판에 <b>"GO!"</b>가 크게 떴다 사라지며 60초가 흐르기 시작합니다.<br>
+          60초가 끝나면 <b>"TIME UP"</b>과 함께 눈앞에 결과판이 나타납니다. <b>방아쇠(Trigger)를 당기면 다시 시작</b>하고, <b>그립 또는 A·B 버튼을 누르면 VR에서 나갑니다.</b>
         </p>
       </div>
 
@@ -1261,24 +1266,31 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
             </tr>
             <tr>
               <td><b>재장전 (Reload)</b></td>
-              <td><span class="key-badge">중지 그립 (Grip)</span> 또는 <span class="key-badge">A / X 버튼</span></td>
+              <td><span class="key-badge">중지 그립 (Grip)</span></td>
               <td><span class="key-badge">Z 버튼</span></td>
               <td><span class="key-badge">Z 버튼 터치</span></td>
               <td><span class="key-badge">R</span> / <span class="key-badge">Z</span> / 우클릭</td>
             </tr>
             <tr>
               <td><b>게임 시작 (Start)</b></td>
-              <td><span class="key-badge">VR 공간에서 방아쇠 1회</span></td>
+              <td>VR에 들어가면 자동 시작<br>경기 후에는 <span class="key-badge">방아쇠</span></td>
               <td><span class="key-badge">C 버튼 1회 클릭</span></td>
               <td><span class="key-badge">C 버튼 터치</span></td>
-              <td><span class="key-badge">Space</span> / 화면 클릭</td>
+              <td><span class="key-badge">Space</span> / 화면 클릭 / <span class="key-badge">경기 시작</span></td>
             </tr>
             <tr>
-              <td><b>VR 일시정지 / 메뉴</b></td>
-              <td><span class="key-badge">B / Y 버튼</span> (Quest 메뉴)</td>
+              <td><b>VR 나가기 · 경기 중단</b></td>
+              <td><span class="key-badge">A</span> <span class="key-badge">B</span> <span class="key-badge">X</span> <span class="key-badge">Y</span> 버튼<br>(경기 중에는 1초 넘게 길게 → 경기 중단 후 나감, 경기 밖에서는 한 번 또는 그립)</td>
               <td>-</td>
               <td>-</td>
-              <td>화면 우측 상단 <span class="key-badge">PAUSE</span></td>
+              <td><span class="key-badge">ESC</span> / <span class="key-badge">경기 중단</span></td>
+            </tr>
+            <tr>
+              <td><b>일시정지</b></td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td>화면 오른쪽 위 <span class="key-badge">일시정지</span> (모든 화면이 함께 멈춤)</td>
             </tr>
           </tbody>
         </table>
@@ -1293,7 +1305,8 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
             <li><b>초기 탄약:</b> 라운드 시작 시 10발 완충 상태로 시작합니다.</li>
             <li><b>탄약 고갈:</b> 잔탄 0발 시 총알이 발사되지 않으며 둔탁한 공이치기 사운드와 함께 *"탄약 소진! 재장전하세요"* 음성 경고가 발생합니다.</li>
             <li><b>재장전 쿨다운:</b> 재장전 입력 시 1.2초 후 10발이 완충되며 *"재장전 완료"* 음성이 출력됩니다.</li>
-            <li><b>레이저 조준선 & 타겟 도트:</b> 총구 전방으로 투사되는 네온 빔과 벽면 착탄 도트로 먼 거리의 비행체도 정확히 조준 가능합니다.</li>
+            <li><b>조준선 & 조준점:</b> 총구에서 실제 조준 지점까지 가늘어지는 빔과 조준점이 보이고, 표적 위에 조준점이 오면 팀 색 고정 링이 나타납니다.</li>
+            <li><b>명중 효과:</b> 표적이 맞으면 섬광·파편·불꽃과 함께 점수 팝업(예: <b>+2 정보</b>)이 떠오르고, Quest 컨트롤러가 진동합니다.</li>
           </ul>
         </div>
 
@@ -1301,12 +1314,24 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <span class="card-badge badge-yellow">REAL-TIME DISPLAY</span>
           <h3>📟 가상 블래스터 OLED 디스플레이</h3>
           <ul style="color:var(--text-muted); font-size:0.93rem; padding-left:1.2rem; line-height:1.75">
-            <li><b>실시간 상태 디스플레이:</b> 가상 블래스터 후면에 고해상도 3D 디지털 OLED 화면이 장착되어 있습니다.</li>
-            <li><b>디스플레이 출력 정보:</b> 내 점수(YOU), 상대 점수(RIVAL), 잔여 탄약 게이지, 60초 타이머 실시간 갱신.</li>
-            <li><b>10초 경고 모드:</b> 종료 10초 전 OLED 테두리가 붉은색으로 점멸하며 사이렌 경고음이 울립니다.</li>
-            <li><b>사격 반동 & 총구 화염:</b> 발사 시 물리적 반동(Recoil) 애니메이션 및 역동적인 Muzzle Flash 라이팅 연출.</li>
+            <li><b>실시간 상태 디스플레이:</b> 가상 블래스터 윗면에 작은 OLED 화면이 붙어 있습니다.</li>
+            <li><b>디스플레이 출력 정보:</b> 남은 시간, 내 점수, 상대 점수, 탄약 10칸(3발 이하이면 경고색).</li>
+            <li><b>상태 표시:</b> 재장전 중 · 일시정지 · VR 종료(버튼을 길게 누르는 동안 남은 초)를 보여 줍니다.</li>
+            <li><b>10초 경고 모드:</b> 남은 시간이 10초 이하가 되면 시간이 빨갛게 바뀌고 음성으로 알려 줍니다.</li>
           </ul>
         </div>
+      </div>
+
+      <!-- 4-4 VR 경기장 안내판 -->
+      <div class="card highlight-cyan" style="margin-top:2rem">
+        <span class="card-badge badge-cyan">IN-VR HUD</span>
+        <h3>🏟️ VR 경기장 점수판 · 결과판</h3>
+        <ul style="color:var(--text-muted); font-size:0.93rem; padding-left:1.2rem; line-height:1.75">
+          <li><b>게이트 위 홀로그램 점수판:</b> <b>1P 점수 | 남은 시간 | 2P 점수</b>와 줄다리기 막대. 경기 전에는 READY, 일시정지 중에는 "일시정지"가 보이고, 10초 이하이면 시간이 빨갛게 두근거립니다.</li>
+          <li><b>상대 선수:</b> 바이저 헬멧과 이름표(1P · 2P · AI)로 보이며, 상대의 머리·총 움직임이 부드럽게 따라옵니다.</li>
+          <li><b>결과판:</b> 경기가 끝나면 눈앞에 승자, 두 선수의 점수 · 명중 · 명중률 · 최고 연속 명중이 나오고, 내 카드에는 "나" 표시가 붙습니다. 한 발도 쏘지 않은 선수의 명중률은 <b>"-"</b>로 표시됩니다.</li>
+          <li><b>결과판 조작:</b> 방아쇠 = 다시 시작, 그립 또는 A·B 버튼 = VR 종료.</li>
+        </ul>
       </div>
     </section>
 
@@ -1323,10 +1348,10 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <h3>🥊 1:1 실시간 PvP 매칭</h3>
           <p>두 명의 플레이어가 같은 공간에 접속하면 선착순 점수 쟁탈전이 활성화됩니다.</p>
           <ul style="color:var(--text-muted); font-size:0.92rem; padding-left:1.2rem; line-height:1.75">
-            <li><b>P1 (Cyan):</b> 1번 슬롯 접속 플레이어 (좌측 스폰, 하늘색 테마)</li>
-            <li><b>P2 (Magenta):</b> 2번 슬롯 접속 플레이어 (우측 스폰, 핑크 테마)</li>
-            <li><b>6DoF 포즈 릴레이:</b> 상대방 머리(HMD) 아바타의 시선 회전과 블래스터 총구 방향, 발사 시 화염(Muzzle Flash)이 가상 공간에 실시간으로 보입니다.</li>
-            <li><b>동일 타겟 경쟁:</b> 먼저 명중시킨 선수가 점수를 획득하며, 표적은 즉시 폭발 파티클과 함께 파괴되어 중복 점수가 방지됩니다.</li>
+            <li><b>1P (시안):</b> 1번 자리 플레이어 (플랫폼 왼쪽 시안 발판)</li>
+            <li><b>2P (마젠타):</b> 2번 자리 플레이어 (플랫폼 오른쪽 마젠타 발판)</li>
+            <li><b>6DoF 포즈 릴레이:</b> 상대 선수는 바이저 헬멧과 이름표(1P · 2P · AI)로 보이며, 머리 회전과 총구 방향, 발사 레이저가 가상 공간에 실시간으로 부드럽게 따라옵니다.</li>
+            <li><b>동일 타겟 경쟁:</b> 먼저 명중시킨 선수가 점수를 획득하며, 표적은 즉시 폭발 효과와 함께 사라져 중복 점수가 방지됩니다.</li>
           </ul>
         </div>
 
@@ -1336,7 +1361,7 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <p>상대방이 접속하지 않은 1인 플레이 환경에서는 인공지능 라이벌이 자동 출전합니다.</p>
           <ul style="color:var(--text-muted); font-size:0.92rem; padding-left:1.2rem; line-height:1.75">
             <li><b>물리적 3D 레이캐스트 판정:</b> AI 총구의 실제 3D 각도와 표적 메시의 교차 여부를 물리적으로 정밀 검증하여, 조준선이 어긋난 치팅 명중을 원천 차단했습니다.</li>
-            <li><b>인간 반응 지연 & 예측 사격:</b> 난이도별로 사람과 유사한 0.3~1.1초의 인지 지연 후 사격하며, Hard 모드에서는 비행 벡터를 계산하는 선도 예측 사격(Lead Aiming)을 구사합니다.</li>
+            <li><b>인간 반응 지연 & 예측 사격:</b> 난이도별로 사람과 유사한 0.3~1.4초의 인지 지연 후 사격하며, 어려움 난이도에서는 비행 벡터를 계산하는 선도 예측 사격(Lead Aiming)을 구사합니다.</li>
             <li><b>난이도별 AI 가변 실력 (밸런싱):</b> Easy(명중률 약 30%, 쿨다운 2.8초), Normal(명중률 약 50%, 쿨다운 2.0초, 인간 플레이어 승리 가능 밸런싱), Hard(명중률 약 75%, 쿨다운 1.25초)로 친화적으로 조정되었습니다.</li>
             <li><b>AI 탄약 & 재장전:</b> AI 또한 10발 소진 시 난이도별(1.0~2.2초) 재장전 상태에 돌입합니다.</li>
           </ul>
@@ -1347,19 +1372,19 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
       <div class="card highlight-yellow">
         <span class="card-badge badge-yellow">TUG-OF-WAR HUD</span>
         <h3>⚖️ 실시간 줄다리기 (Tug-of-War) 스코어보드 & 승패 판정</h3>
-        <p>화면 상단 중앙 HUD에서 양 선수의 실시간 점수 비율을 직관적으로 확인하세요.</p>
+        <p>화면 위쪽 가운데 점수판(VR 안에서는 게이트 위 홀로그램 점수판)에서 양 선수의 점수 비율을 한눈에 확인하세요.</p>
         <div class="grid-3" style="margin-bottom:0">
           <div style="background:rgba(0,0,0,0.45); padding:1.1rem; border-radius:8px">
-            <div style="color:var(--cyan); font-weight:700; margin-bottom:0.3rem">P1 리드 상태</div>
-            <div style="font-size:0.88rem; color:var(--text-muted)">P1 게이지가 우측으로 확장되며 <code>P1 +500 LEAD</code> 배너 표시</div>
+            <div style="color:var(--cyan); font-weight:700; margin-bottom:0.3rem">앞선 선수 표시</div>
+            <div style="font-size:0.88rem; color:var(--text-muted)">앞선 쪽 색 막대가 늘어나고 점수 차가 <code>1P +3</code>처럼 표시</div>
           </div>
           <div style="background:rgba(0,0,0,0.45); padding:1.1rem; border-radius:8px">
-            <div style="color:var(--yellow); font-weight:700; margin-bottom:0.3rem">동점 상태 (TIED)</div>
-            <div style="font-size:0.88rem; color:var(--text-muted)">양 선수의 점수가 동일할 때 게이지가 50:50 균형을 유지</div>
+            <div style="color:var(--yellow); font-weight:700; margin-bottom:0.3rem">동점</div>
+            <div style="font-size:0.88rem; color:var(--text-muted)">양 선수의 점수가 같으면 막대가 가운데에 머물고 <code>동점</code>으로 표시</div>
           </div>
           <div style="background:rgba(0,0,0,0.45); padding:1.1rem; border-radius:8px">
-            <div style="color:var(--magenta); font-weight:700; margin-bottom:0.3rem">승패 결과 디브리핑</div>
-            <div style="font-size:0.88rem; color:var(--text-muted)">승자에게 <b>"VICTORY"</b>, 패자에게 <b>"DEFEAT"</b> 한국어 오퍼레이터 음성 안내</div>
+            <div style="color:var(--magenta); font-weight:700; margin-bottom:0.3rem">승패 결과</div>
+            <div style="font-size:0.88rem; color:var(--text-muted)">모든 화면에 같은 승자 배너(<b>[ 승리 ]</b> · <b>[ 무승부 ]</b>)와 기록 비교가 나오고, 한국어 음성으로 결과를 알려 줌</div>
           </div>
         </div>
       </div>
@@ -1377,11 +1402,12 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <span class="card-badge badge-purple">4 BROADCAST CAMERAS</span>
           <h3>🎥 4대 전문 중계 카메라 시점</h3>
           <ul style="color:var(--text-muted); font-size:0.92rem; padding-left:1.2rem; line-height:1.8">
-            <li><b>[1] 스타디움 풀샷 (Stadium):</b> 경기장 전체 그리드와 양 선수, 비행 표적을 한눈에 담는 마스터 샷 (단축키 <span class="key-badge">1</span>)</li>
-            <li><b>[2] 1P 숄더뷰 (P1 View):</b> Player 1의 어깨 뒤에서 6DoF 조준과 격발을 3인칭 추적 (단축키 <span class="key-badge">2</span>)</li>
-            <li><b>[3] 2P 숄더뷰 (P2 View):</b> Player 2 / AI Rival의 조준과 타격을 근접 추적 (단축키 <span class="key-badge">3</span>)</li>
-            <li><b>[4] 시네마틱 궤도캠 (Cinematic Orbit):</b> 15m 반경으로 경기장 중심을 360도 부드럽게 공전하는 시네마틱 앵글 (단축키 <span class="key-badge">4</span>)</li>
+            <li><b>[1] 스타디움:</b> 선수 뒤쪽 위에서 표적 구역 · 게이트 · 점수판을 화면 가운데에 담는 기본 화면 (단축키 <span class="key-badge">1</span>)</li>
+            <li><b>[2] 1P 시점:</b> 플레이어 1의 어깨 뒤에서 조준과 격발을 따라감 (단축키 <span class="key-badge">2</span>)</li>
+            <li><b>[3] 2P 시점:</b> 플레이어 2 / AI 라이벌의 어깨 뒤에서 따라감 (단축키 <span class="key-badge">3</span>)</li>
+            <li><b>[4] 궤도 회전:</b> 선수 뒤쪽 반원(반지름 약 9.5m)을 좌우로 천천히 오가는 시네마틱 시점. 표적 구역을 가로지르지 않음 (단축키 <span class="key-badge">4</span>)</li>
           </ul>
+          <p style="font-size:0.88rem; color:var(--text-muted); margin-top:0.75rem">숫자 키 대신 화면 오른쪽 위 카메라 버튼을 눌러도 됩니다(마우스를 움직이면 나타나고 잠시 뒤 숨음). 지금 카메라는 화면 아래 가운데에 <code>CAM 1 스타디움</code>처럼 표시됩니다.</p>
         </div>
 
         <div class="card highlight-yellow">
@@ -1389,12 +1415,22 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <h3>🔗 관람 모드 원클릭 접속 방법</h3>
           <p>누구나 브라우저만 열면 별도 장비 없이 관람 가능합니다.</p>
           <div class="step-sub-box">
-            <b>방법 1. 메인 메뉴 버튼:</b> 게임 시작 모달에서 노란색 <b>[📺 관람 모드 (OBSERVER)]</b> 버튼을 클릭하여 즉시 진입.<br><br>
-            <b>방법 2. URL 파라미터 자동 관람:</b> 주소창에 아래 주소를 입력하면 UI 조작 없이 즉시 관람 모드로 시작됩니다:<br>
+            <b>방법 1. URL 파라미터 (권장):</b> 주소창에 아래 주소를 입력하면 UI 조작 없이 바로 관전 화면으로 시작됩니다. 그다음 <span class="key-badge">F11</span>로 전체 화면:<br>
             <code style="color:var(--yellow)">http://<span class="dynamic-ip">192.168.1.150</span>:3000/?role=spectator</code><br><br>
-            <b>🤖 AI 봇 실시간 관람 완벽 동기화:</b> 인간 플레이어(1P)의 6DoF 모션뿐만 아니라 AI Rival 봇의 표적 탐색, 헬멧 시선 회전, 블래스터 조준선, 격발 반동(Recoil) 및 총구 화염, 타겟 폭발 파티클과 점수가 관람자에게 실시간(20Hz) 중계됩니다. 또한 1P 부재 시 단독 관람 모드로 접속해도 AI 사격 데모가 자동 구동됩니다.
+            <b>방법 2. 메인 메뉴 버튼:</b> 메인 메뉴의 <b>[관전 화면으로]</b> 버튼(관전 모니터로 정한 기기는 <b>[관전 화면 시작]</b>)을 누르거나, <b>[환경설정] › 이 기기 › 기기 역할</b>에서 <b>관전</b>을 고릅니다.<br><br>
+            <b>🔊 소리:</b> 브라우저 정책상 화면을 한 번도 클릭하지 않으면 소리가 나지 않습니다. 관전 TV에서 소리를 내려면 화면을 한 번 클릭하세요.
           </div>
         </div>
+      </div>
+
+      <div class="card highlight-cyan" style="margin-top:1.5rem">
+        <span class="card-badge badge-cyan">BROADCAST SCREENS</span>
+        <h3>🖥️ 관전 화면 3가지 (자동 전환)</h3>
+        <ul style="color:var(--text-muted); font-size:0.92rem; padding-left:1.2rem; line-height:1.8">
+          <li><b>대기 화면:</b> 경기가 없을 때 소리 없는 AI 사격 시연을 배경으로 게임 소개, 하는 방법, 표적 점수(정보 · 통신 2점, 나머지 1점), 다음 도전자, 최근 경기를 보여 줍니다.</li>
+          <li><b>실시간 중계 (LIVE):</b> 경기가 시작되면 자동으로 바뀝니다. 위쪽 가운데 점수판(점수 · 남은 시간 · 줄다리기, 10초 이하 경고), 아래쪽 두 선수 카드(명중 · 명중률 · 연속 명중), 카메라 이름이 보입니다. 선수의 움직임과 AI 라이벌의 조준 · 사격 · 점수까지 실시간으로 중계됩니다.</li>
+          <li><b>경기 결과 (FINAL):</b> 승자와 두 선수 기록 비교를 20초 동안 보여 준 뒤 대기 화면으로 돌아갑니다.</li>
+        </ul>
       </div>
     </section>
 
@@ -1403,16 +1439,16 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
     <!-- ================================================================= -->
     <section id="customization">
       <h2 class="section-title"><span class="icon">⚙️</span> 7. 사격장 맞춤 설정, 사운드, 음성 및 Top 10 순위표</h2>
-      <p class="section-desc">화면 상단 우측의 <b>[⚙️ SETTINGS]</b> 버튼을 눌러 경기 환경과 사운드 프리셋을 취향에 맞게 변경할 수 있습니다.</p>
+      <p class="section-desc">화면 오른쪽 위 톱니 모양 <b>[환경설정]</b> 버튼을 눌러 경기 환경과 소리를 바꿀 수 있습니다.</p>
 
       <div class="grid-3">
         <div class="card">
           <span class="card-badge badge-cyan">THEME & TARGET</span>
           <h3>🌐 테마 & 표적 형태</h3>
           <ul style="color:var(--text-muted); font-size:0.9rem; padding-left:1.2rem; line-height:1.75">
-            <li><b>가상 테마 (3종):</b> Cyber Arena (기본 네온 그리드), Deep Space (성운과 별빛), Neon City (고층 마천루 빌딩 실루엣)</li>
-            <li><b>3D 표적 형태 (4종):</b> 회전 프로펠러 장착 Drone (기본), 발광 구체 Sphere, 메탈릭 Cube, 쾌속 궤도 비행 Disc</li>
-            <li><b>난이도 프리셋 (3종):</b> Easy (1.0x), Normal (1.5x), Hard (2.5x 배율)</li>
+            <li><b>경기장 테마 (3종):</b> 사이버 아레나 (기본: 남색 하늘 · 시안 격자 · 홀로 게이트), 딥 스페이스 (성운 · 행성 · 별빛), 네온 시티 (저녁 하늘과 지평선 빌딩 숲). <b>기기마다 저장되고 그 기기 화면에만 적용</b>됩니다.</li>
+            <li><b>표적 모양 (4종):</b> 드론 (기본), 구체, 큐브, 디스크</li>
+            <li><b>난이도 (3종):</b> 쉬움 · 보통 · 어려움. 표적 속도 · 크기와 AI 라이벌의 실력이 함께 바뀌고, 친구와 대결하면 경기를 시작한 쪽의 난이도로 맞춰집니다.</li>
           </ul>
         </div>
 
@@ -1420,10 +1456,10 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <span class="card-badge badge-magenta">SFX PRESETS</span>
           <h3>🔊 효과음 3종 프리셋</h3>
           <ul style="color:var(--text-muted); font-size:0.9rem; padding-left:1.2rem; line-height:1.75">
-            <li><b>SF LASER:</b> 플라즈마 에너지 빔 & 챠임 벨소리</li>
-            <li><b>KINETIC GUN:</b> 실탄 화약 폭발음 & 0.15초 후 탄피 배출(Brass Eject) 핑 사운드</li>
-            <li><b>8-BIT RETRO:</b> 아케이드 고전 사각파(Square Wave) 칩튠</li>
-            <li><b>마스터 볼륨:</b> 0% ~ 100% 무단계 조절 및 프리뷰 지원</li>
+            <li><b>SF 레이저:</b> 미래형 광선 소리 (기본)</li>
+            <li><b>실탄:</b> 묵직한 총소리와 탄피 배출 소리</li>
+            <li><b>8비트:</b> 오락실 게임 소리</li>
+            <li><b>효과음 크기:</b> 0% ~ 100% 조절. 효과음을 고르면 바로 들려줍니다.</li>
           </ul>
         </div>
 
@@ -1433,7 +1469,7 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <ul style="color:var(--text-muted); font-size:0.9rem; padding-left:1.2rem; line-height:1.75">
             <li><b>무전기 통신음 (Radio Chirp):</b> 지지직- 삐빅 통신음과 동기화</li>
             <li><b>상황별 7종 음성 멘트:</b> 작전 개시, 탄약 소진, 재장전 완료, 5단위 연속 명중 콤보, 10초 전 경고, 승리(VICTORY), 패배(DEFEAT)</li>
-            <li><b>음성 제어:</b> 음성 ON/OFF 토글, 볼륨 슬라이더, <b>[🔊 테스트]</b> 버튼</li>
+            <li><b>음성 제어:</b> 소리 › <b>음성 안내</b> 켜기 / 끄기, <b>[들어 보기]</b> 버튼, <b>음성 크기</b> 슬라이더</li>
           </ul>
         </div>
       </div>
@@ -1444,9 +1480,9 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
         <h3>🏆 Top 10 순위표 (글로벌 명예의 전당) & 닉네임 등록</h3>
         <p>게임 종료 후 닉네임을 입력하여 브라우저 영구 저장소(localStorage)에 점수와 명중률을 등록할 수 있습니다.</p>
         <ul class="bullet-check">
-          <li>1위 🥇, 2위 🥈, 3위 🥉 전용 메달 뱃지 및 본인 기록(<b>YOU</b>) 실시간 하이라이팅 표시.</li>
-          <li>상단 HUD의 <b>[🏆 RANKING]</b> 버튼을 누르면 대기 중이든 게임 중이든 언제든 현재 Top 10 랭킹 열람 가능.</li>
-          <li>원할 경우 순위표 하단의 <b>[기본 랭킹으로 복원]</b> 버튼으로 언제든 초기 상태로 리셋 가능.</li>
+          <li>1~3위는 시상대로, 4~10위는 목록으로 보여 주며 방금 등록한 기록은 <b>나의 기록</b>으로 강조합니다.</li>
+          <li>화면 오른쪽 위 <b>[순위표]</b> 버튼으로 열 수 있습니다. 선수 화면에서는 경기 중에는 버튼이 숨겨집니다(관전 화면은 언제든 가능).</li>
+          <li>순위표 창의 <b>[예시 기록으로 되돌리기]</b> 버튼으로 처음 예시 기록 상태로 되돌릴 수 있습니다(등록한 기록은 지워짐).</li>
         </ul>
       </div>
     </section>
@@ -1459,7 +1495,7 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
 
       <div class="faq-item active">
         <div class="faq-question" onclick="toggleFaq(this)">
-          <span>Q1. Quest 2 브라우저에서 [ENTER VR] 버튼을 눌러도 반응이 없거나 연결할 수 없다고 뜹니다.</span>
+          <span>Q1. Quest 2 브라우저에서 [VR 배틀 시작] 버튼을 눌러도 반응이 없거나 연결할 수 없다고 뜹니다.</span>
           <span class="faq-arrow">▼</span>
         </div>
         <div class="faq-answer">
@@ -1483,7 +1519,7 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <span class="faq-arrow">▼</span>
         </div>
         <div class="faq-answer">
-          A. 키보드 숫자키 <b>[1]</b>(스타디움 풀샷), <b>[2]</b>(1P 숄더뷰), <b>[3]</b>(2P 숄더뷰), <b>[4]</b>(시네마틱 궤도캠)을 누르거나, 화면 하단 중앙에 나타나는 <b>[BROADCAST CAM]</b> 툴바 버튼을 마우스로 클릭하여 실시간 전환할 수 있습니다.
+          A. 키보드 숫자 키 <b>[1]</b>(스타디움), <b>[2]</b>(1P 시점), <b>[3]</b>(2P 시점), <b>[4]</b>(궤도 회전)을 누르거나, 마우스를 움직이면 화면 오른쪽 위에 나타나는 카메라 버튼을 눌러 바꿀 수 있습니다.
         </div>
       </div>
 
@@ -1493,9 +1529,10 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <span class="faq-arrow">▼</span>
         </div>
         <div class="faq-answer">
-          A. 1) 상단 <b>[⚙️ SETTINGS]</b>를 열어 <code>KOREAN VOICE BRIEFING</code>이 <b>[ON]</b> 상태이고 볼륨이 0%가 아닌지 확인하세요.<br>
-          2) 옆에 있는 <b>[🔊 테스트]</b> 버튼을 눌러보세요.<br>
-          3) 최신 브라우저의 오디오 정책상 최초 1회 화면 클릭(또는 사격) 전까지 브라우저 오디오가 일시 정지되어 있을 수 있습니다.
+          A. 1) 오른쪽 위 <b>[환경설정]</b> › 소리에서 <b>음성 안내</b>가 <b>켜기</b>이고 음성 크기가 0%가 아닌지 확인하세요.<br>
+          2) 옆에 있는 <b>[들어 보기]</b> 버튼을 눌러 보세요.<br>
+          3) 브라우저 정책상 화면을 한 번 클릭(또는 사격)하기 전까지는 소리가 나지 않습니다. 특히 관전 TV는 화면을 한 번 클릭해 두세요.<br>
+          4) 관전 화면의 대기용 AI 시연은 원래 소리가 나지 않습니다. 실제 경기가 시작되면 소리가 납니다.
         </div>
       </div>
 
@@ -1517,7 +1554,38 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <span class="faq-arrow">▼</span>
         </div>
         <div class="faq-answer">
-          A. Cyber Strike VR Arena v1.3에서는 <b>실제 물리적 3D 레이캐스트(Raycast)</b>를 통해 AI 총구와 타겟의 교차를 정밀 검증합니다. 또한 인간 플레이어가 승리할 수 있도록 Normal 모드 기준 반응 속도 0.4초, 사격 쿨다운 2.0초, 명중률 50% 수준으로 정밀 밸런싱되어 있습니다.
+          A. Cyber Strike VR Arena v1.3에서는 <b>실제 물리적 3D 레이캐스트(Raycast)</b>를 통해 AI 총구와 타겟의 교차를 정밀 검증합니다. 또한 인간 플레이어가 승리할 수 있도록 보통 난이도 기준 반응 속도 0.65~0.95초, 사격 쿨다운 약 2.0초, 명중률 50% 수준으로 밸런싱되어 있습니다.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          <span>Q7. npm run dev를 실행하니 "Module not found: troika-three-text" 오류가 납니다.</span>
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-answer">
+          A. VR 안 글자를 그리는 새 패키지가 아직 설치되지 않은 것입니다. 인터넷이 되는 곳에서 <code>frontend</code> 폴더로 이동해 <code>npm install</code>을 한 번 실행한 뒤 다시 <code>npm run dev</code>를 실행하세요. 코드를 새로 받을 때마다 한 번씩 해 주면 됩니다.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          <span>Q8. VR 화면이 끊기거나 느립니다. 성능을 확인하는 방법이 있나요?</span>
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-answer">
+          A. 1) 주소 끝에 <code>?debug=perf</code>를 붙여 접속하면(예: <code>http://<span class="dynamic-ip">192.168.1.150</span>:3000/?role=p1&amp;debug=perf</code>) 화면에 fps와 draw call 수가 표시됩니다. VR에서는 총을 들지 않은 손 옆에 작게 보입니다. Quest 2는 72fps가 정상입니다.<br>
+          2) Quest 브라우저는 자동으로 낮은 그래픽 품질을 씁니다. PC에서도 품질을 낮추려면 주소에 <code>?quality=low</code>를 붙이세요(높이려면 <code>?quality=high</code>).
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          <span>Q9. 기기마다 경기장 테마가 다르게 보입니다.</span>
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-answer">
+          A. 경기장 테마는 <b>기기마다 따로 저장</b>되고 그 기기 화면에만 적용됩니다. 처음에는 모두 사이버 아레나이며, 다른 테마를 쓰려면 Quest 두 대와 관전 모니터에서 각각 <b>[환경설정]</b> › 경기장 테마를 고르세요.
         </div>
       </div>
     </section>
