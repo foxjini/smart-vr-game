@@ -84,6 +84,19 @@ function readRecentMatches(): MatchResultSummary[] {
   }
 }
 
+/** 경기장 테마는 기기마다 저장 (서버로 맞추지 않음, 처음에는 모든 기기가 사이버) */
+const THEME_KEY = 'cyber_strike_theme_v1';
+
+function readSavedTheme(): ThemeType {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'cyber' || saved === 'space' || saved === 'city') return saved;
+  } catch {
+    // 저장소를 쓸 수 없으면 기본 테마
+  }
+  return 'cyber';
+}
+
 /** 관전 화면: 실제 경기 결과를 보여 주는 시간 / 시연이 끝난 뒤 다음 시연까지 쉬는 시간 */
 const SPECTATOR_RESULT_MS = 20000;
 const DEMO_RESTART_MS = 5000;
@@ -113,7 +126,7 @@ export default function ShootingArenaApp() {
   // 게임 설정 및 상태
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [currentTheme, setCurrentTheme] = useState<ThemeType>('cyber');
+  const [currentTheme, setCurrentTheme] = useState<ThemeType>(readSavedTheme);
   const [currentShape, setCurrentShape] = useState<TargetShape>('drone');
   const [currentDifficulty, setCurrentDifficulty] = useState<Difficulty>('normal');
   const [soundPreset, setSoundPreset] = useState<SoundPresetType>(DEFAULT_SOUND_PRESET);
@@ -184,7 +197,7 @@ export default function ShootingArenaApp() {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const engine = new ShootingArenaEngine(containerRef.current);
+    const engine = new ShootingArenaEngine(containerRef.current, readSavedTheme());
     engineRef.current = engine;
 
     engine.setSoundPreset(DEFAULT_SOUND_PRESET);
@@ -436,6 +449,11 @@ export default function ShootingArenaApp() {
 
   const handleSelectTheme = useCallback((theme: ThemeType) => {
     setCurrentTheme(theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // 저장하지 못해도 이번 접속에서는 적용됨
+    }
     if (engineRef.current) {
       engineRef.current.setTheme(theme);
     }

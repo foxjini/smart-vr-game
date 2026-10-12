@@ -53,6 +53,19 @@ export class TargetLabels {
     return entry.texture;
   }
 
+  /** 시작할 때 모든 키워드의 라벨·팝업을 미리 그림 (경기 중 처음 나온 키워드 때문에 멈칫하지 않게) */
+  preload(entries: ReadonlyArray<readonly [TargetKeyword, number]>) {
+    for (const [keyword, points] of entries) {
+      this.labelMaterial(keyword, points);
+      this.popupTexture(keyword, points);
+    }
+  }
+
+  /** 미리 GPU에 올려 둘 텍스처 목록 */
+  textures(): THREE.Texture[] {
+    return [...[...this.labels.values()].map((e) => e.texture), ...[...this.popups.values()].map((e) => e.texture)];
+  }
+
   /** 웹 폰트를 불러온 뒤 다시 그림 */
   refresh() {
     this.labels.forEach((e, keyword) => {

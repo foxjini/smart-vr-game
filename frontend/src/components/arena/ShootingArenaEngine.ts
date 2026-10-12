@@ -23,15 +23,20 @@ import { CyberAIRival, TargetObjectRef } from '@/core/ai/CyberAIRival';
 import { SpectatorCameraController } from '@/core/spectator/SpectatorCameraController';
 import { PerfPanel } from './visual/debug/PerfPanel';
 import { PALETTE, teamColor, cssColor, cssRgba } from './visual/palette';
-import { configureRenderer, createEnvironmentMap, requestTargetFrameRate, asCanvasTexture } from './visual/renderSetup';
+import { configureRenderer, requestTargetFrameRate, asCanvasTexture } from './visual/renderSetup';
 import { FONT_UI, FONT_NUM, loadCanvasFonts } from './visual/fonts';
 import { DroneFactory, targetGlowColor } from './visual/DroneFactory';
 import { HitProxyFactory } from './visual/hitProxies';
 import { EffectsSystem } from './visual/EffectsSystem';
 import { TargetLabels } from './visual/TargetLabels';
 import { Haptics, HapticPattern } from './visual/Haptics';
+import { ArenaEnvironment } from './visual/ArenaEnvironment';
+import { detectQuality, QualitySettings } from './visual/quality';
 
 export const TARGET_KEYWORDS: TargetKeyword[] = ['정보', '통신', '제어', '회로', '인공', '전자'];
+
+/** 키워드 배점: 정보·통신 2점, 나머지 1점 */
+const keywordPoints = (keyword: TargetKeyword): number => (keyword === '정보' || keyword === '통신' ? 2 : 1);
 
 /** 경기 시간(초) */
 const MATCH_DURATION = 60;
@@ -202,7 +207,9 @@ export class ShootingArenaEngine {
   // 3D 오브젝트들
   /** 내 카메라·VR 컨트롤러·안내판을 담는 리그 (슬롯 위치로 이동) */
   private playerRig: THREE.Group;
-  private themeGroup: THREE.Group;
+  /** 경기장 배경 (하늘·바닥·플랫폼·기둥·게이트·조명·안개·반사 환경맵) */
+  private arena!: ArenaEnvironment;
+  private quality!: QualitySettings;
   private targetsGroup: THREE.Group;
   private p1Blaster!: BlasterRig;
   private p2Blaster!: BlasterRig;
@@ -217,8 +224,6 @@ export class ShootingArenaEngine {
   private drones!: DroneFactory;
   private effects!: EffectsSystem;
   private haptics = new Haptics();
-  /** 금속 재질 반사용 환경맵 */
-  private envMap?: THREE.Texture;
   /** 결과판에 마지막으로 그린 상태 (폰트를 불러온 뒤 같은 내용으로 다시 그리기 위함) */
   private vrPromptState: { isGameOver: boolean; winner?: string } = { isGameOver: false };
   private disposed = false;
@@ -276,8 +281,9 @@ export class ShootingArenaEngine {
   /** 개발용 성능 표시 (?debug=perf일 때만) */
   private perfPanel?: PerfPanel;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, initialTheme: ThemeType = 'cyber') {
     this.container = container;
+    this.currentTheme = initialTheme;
     this.scene = new THREE.Scene();
     this.clock = new THREE.Clock();
 
@@ -315,26 +321,24 @@ export class ShootingArenaEngine {
 
     container.appendChild(this.renderer.domElement);
 
-    // 금속 재질이 은은하게 반사하도록 환경맵 적용
-    this.envMap = createEnvironmentMap(this.renderer);
-    this.scene.environment = this.envMap;
-    this.scene.environmentIntensity = 0.5;
+    // 경기장 배경 (조명·안개·금속 반사 환경맵 포함). Quest·소프트웨어 렌더러는 별 수 등을 줄임
+    this.quality = detectQuality(this.renderer);
+    this.arena = new ArenaEnvironment(this.renderer, this.scene, this.quality);
+    this.scene.add(this.arena.root);
 
     // 3. 그룹 초기화
-    this.themeGroup = new THREE.Group();
     this.targetsGroup = new THREE.Group();
-    this.scene.add(this.themeGroup);
     this.scene.add(this.targetsGroup);
 
     // 표적 겉모습·라벨·사격 효과
     this.labels = new TargetLabels();
+    this.labels.preload(TARGET_KEYWORDS.map((k) => [k, keywordPoints(k)] as const));
     this.drones = new DroneFactory(this.labels);
     this.effects = new EffectsSystem(this.labels);
     this.scene.add(this.effects.root);
 
     // 4. 컴포넌트 빌드
-    this.initLights();
-    this.buildTheme(this.currentTheme);
+    this.arena.setTheme(this.currentTheme);
     this.buildDualBlasters();
     this.buildVRHeadAvatars();
     this.buildVRPrompt();
@@ -377,12 +381,18 @@ export class ShootingArenaEngine {
 
     // 8. 렌더 루프 시작. 첫 화면·접속 처리를 막지 않도록 잠시 뒤 셰이더를 미리 컴파일
     this.renderer.setAnimationLoop(this.animate);
-    this.warmUpTimer = setTimeout(() => this.warmUpShaders(), 800);
+    this.scheduleWarmUp(800);
+  }
+
+  /** 잠시 뒤 셰이더 예열 (이미 예약돼 있으면 새로 예약) */
+  private scheduleWarmUp(delayMs: number) {
+    if (this.warmUpTimer) clearTimeout(this.warmUpTimer);
+    this.warmUpTimer = setTimeout(() => this.warmUpShaders(), delayMs);
   }
 
   /**
    * 첫 표적·첫 명중 때 화면이 멈칫하지 않도록 아직 그려 본 적 없는 재질을 미리 컴파일
-   * (표적 4종 × 1·2점 견본, 평소에는 숨어 있는 빔·점수 팝업)
+   * (표적 4종 × 1·2점 견본, 평소에는 숨어 있는 빔·점수 팝업, 표적 라벨 텍스처)
    */
   private warmUpShaders() {
     this.warmUpTimer = null;
@@ -392,6 +402,8 @@ export class ShootingArenaEngine {
       // 미리 컴파일하지 못해도 처음 그릴 때 컴파일됨
     });
     this.renderer.compileAsync(this.effects.root, this.camera, this.scene).catch(() => {});
+    // 표적 라벨·점수 팝업 텍스처도 미리 GPU에 올림
+    this.labels.textures().forEach((t) => this.renderer.initTexture(t));
   }
 
   // ==========================================
@@ -668,21 +680,8 @@ export class ShootingArenaEngine {
   }
 
   // ==========================================
-  // 1. 조명 및 가상 무기 (Dual Blaster) 구축
+  // 1. 가상 무기 (Dual Blaster) 구축 (조명은 ArenaEnvironment)
   // ==========================================
-  private initLights() {
-    const ambient = new THREE.AmbientLight(0x223344, 1.5);
-    this.scene.add(ambient);
-
-    const dirLight = new THREE.DirectionalLight(0x00f0ff, 2.0);
-    dirLight.position.set(5, 10, 5);
-    this.scene.add(dirLight);
-
-    const backLight = new THREE.DirectionalLight(0xff0055, 1.5);
-    backLight.position.set(-5, 5, -5);
-    this.scene.add(backLight);
-  }
-
   /** 1P(Cyan) 및 2P(Magenta) 듀얼 블래스터 절차적 구축 */
   private buildDualBlasters() {
     this.p1Blaster = this.createBlasterRig(teamColor(1), 'PLAYER 1 (CYAN)');
@@ -1094,79 +1093,9 @@ export class ShootingArenaEngine {
   // ==========================================
   public setTheme(theme: ThemeType) {
     this.currentTheme = theme;
-    this.buildTheme(theme);
-  }
-
-  private clearTheme() {
-    while (this.themeGroup.children.length > 0) {
-      const obj = this.themeGroup.children[0];
-      this.themeGroup.remove(obj);
-      obj.traverse((child) => {
-        if (child instanceof THREE.Mesh || child instanceof THREE.Points || child instanceof THREE.Line) {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
-            else child.material.dispose();
-          }
-        }
-      });
-    }
-  }
-
-  private buildTheme(theme: ThemeType) {
-    this.clearTheme();
-
-    if (theme === 'cyber') {
-      this.scene.background = new THREE.Color(0x050814);
-      this.scene.fog = new THREE.FogExp2(0x050814, 0.025);
-
-      const gridHelper = new THREE.GridHelper(60, 60, 0x00f0ff, 0x112244);
-      gridHelper.position.y = 0;
-      this.themeGroup.add(gridHelper);
-
-      for (let i = 0; i < 4; i++) {
-        const ringGeo = new THREE.TorusGeometry(8 + i * 3.5, 0.04, 8, 48);
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: i % 2 === 0 ? 0x00f0ff : 0xff0055,
-          transparent: true,
-          opacity: 0.6,
-        });
-        const ring = new THREE.Mesh(ringGeo, ringMat);
-        ring.position.set(0, 10, -15 - i * 8);
-        this.themeGroup.add(ring);
-      }
-    } else if (theme === 'space') {
-      this.scene.background = new THREE.Color(0x020308);
-      this.scene.fog = new THREE.FogExp2(0x020308, 0.015);
-
-      const starGeo = new THREE.BufferGeometry();
-      const starCount = 1500;
-      const positions = new Float32Array(starCount * 3);
-      for (let i = 0; i < starCount * 3; i += 3) {
-        positions[i] = (Math.random() - 0.5) * 120;
-        positions[i + 1] = Math.random() * 60;
-        positions[i + 2] = -Math.random() * 90;
-      }
-      starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      const starMat = new THREE.PointsMaterial({ color: 0xaaccff, size: 0.35, transparent: true });
-      const stars = new THREE.Points(starGeo, starMat);
-      this.themeGroup.add(stars);
-
-      const platGeo = new THREE.CylinderGeometry(8, 8, 0.5, 32);
-      const platMat = new THREE.MeshStandardMaterial({ color: 0x111625, roughness: 0.8 });
-      const platform = new THREE.Mesh(platGeo, platMat);
-      platform.position.y = -0.25;
-      this.themeGroup.add(platform);
-    } else if (theme === 'city') {
-      this.scene.background = new THREE.Color(0x090514);
-      this.scene.fog = new THREE.FogExp2(0x090514, 0.02);
-
-      const floorGeo = new THREE.PlaneGeometry(100, 100);
-      floorGeo.rotateX(-Math.PI / 2);
-      const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0a14, roughness: 0.2 });
-      const floor = new THREE.Mesh(floorGeo, floorMat);
-      this.themeGroup.add(floor);
-    }
+    this.arena.setTheme(theme);
+    // 조명 구성과 안개 종류는 테마마다 같아 표적·효과 셰이더는 그대로지만, 혹시 바뀐 것이 있으면 미리 컴파일
+    this.scheduleWarmUp(300);
   }
 
   // ==========================================
@@ -1245,7 +1174,7 @@ export class ShootingArenaEngine {
 
     // 6가지 문구 랜덤 배정 ('정보', '통신', '제어', '회로', '인공', '전자')
     const keyword = TARGET_KEYWORDS[Math.floor(Math.random() * TARGET_KEYWORDS.length)];
-    const points = (keyword === '정보' || keyword === '통신') ? 2 : 1;
+    const points = keywordPoints(keyword);
 
     const cfg = this.difficultyConfigs[this.currentDifficulty];
     const x = (Math.random() - 0.5) * 16;
@@ -1281,7 +1210,7 @@ export class ShootingArenaEngine {
     if (this.activeTargets.some((t) => t.id === data.id)) return;
 
     const keyword = data.keyword || TARGET_KEYWORDS[Math.floor(Math.random() * TARGET_KEYWORDS.length)];
-    const points = data.points || ((keyword === '정보' || keyword === '통신') ? 2 : 1);
+    const points = data.points || keywordPoints(keyword);
 
     this.addTarget({
       id: data.id,
@@ -1409,6 +1338,8 @@ export class ShootingArenaEngine {
     const s = this.difficultyConfigs[this.currentDifficulty].scale;
     this.effects.burst(point, color, target.points, s);
     this.effects.popup(point, target.keyword, target.points, this.camera);
+    // 명중 지점 아래 바닥에 물결 (2점은 금색으로 더 진하게)
+    this.arena.ripple(point, target.points === 2 ? PALETTE.gold : color, target.points === 2 ? 1 : 0.75);
   }
 
   /** 총을 든 손 컨트롤러 진동 (VR 중일 때만) */
@@ -2115,8 +2046,9 @@ export class ShootingArenaEngine {
       t.labelSprite.position.y = t.labelTop + (t.labelBase.y * k) / 2 + 0.04;
     }
 
-    // 6. 사격·명중 효과 (빔·불꽃·파편·점수 팝업)
+    // 6. 사격·명중 효과(빔·불꽃·파편·점수 팝업)와 경기장 배경(별 반짝임·게이트 회전·바닥 물결)
     this.effects.update(delta, this.camera);
+    this.arena.update(delta);
 
     // 7. 렌더
     this.renderer.render(this.scene, this.camera);
@@ -2264,8 +2196,7 @@ export class ShootingArenaEngine {
       promptMat.dispose();
       this.vrPromptMesh.geometry.dispose();
     }
-    this.scene.environment = null;
-    this.envMap?.dispose();
+    this.arena.dispose();
 
     if (this.vrButtonElement && this.vrButtonElement.parentNode) {
       this.vrButtonElement.parentNode.removeChild(this.vrButtonElement);

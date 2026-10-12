@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 /** Quest 2 기본 주사율. 성능 예산을 이 기준으로 잡음 */
 const TARGET_XR_FRAME_RATE = 72;
@@ -14,19 +13,6 @@ export function configureRenderer(renderer: THREE.WebGLRenderer) {
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = false;
-}
-
-/**
- * 금속 재질이 반사할 환경맵.
- * 지금은 RoomEnvironment로 은은한 반사만 주고, 경기장 조명을 반영한 환경맵은 아레나 단계에서 교체.
- */
-export function createEnvironmentMap(renderer: THREE.WebGLRenderer): THREE.Texture {
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const room = new RoomEnvironment();
-  const target = pmrem.fromScene(room, 0.04);
-  room.dispose();
-  pmrem.dispose();
-  return target.texture;
 }
 
 type FrameRateSession = XRSession & {
