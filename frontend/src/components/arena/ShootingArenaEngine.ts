@@ -148,7 +148,11 @@ export class ShootingArenaEngine {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
-  private clock: THREE.Clock;
+  /**
+   * 프레임 시간. connect(document)는 쓰지 않음: 몰입 VR 중 문서가 hidden으로 보고되면
+   * 시간이 멈춰 게임이 정지할 수 있음 (긴 공백은 animate에서 0.1초로 자름)
+   */
+  private timer = new THREE.Timer();
 
   // 게임 매니저 참조
   private soundManager = SoundManager.getInstance();
@@ -233,6 +237,7 @@ export class ShootingArenaEngine {
   private vrPromptMesh!: THREE.Mesh;
   private activeTargets: TargetObject[] = [];
   private vrButtonElement?: HTMLElement;
+  private vrButtonTimer: ReturnType<typeof setTimeout> | null = null;
 
   // 표적·효과 (모양·재질·텍스처를 한 번만 만들어 모든 표적이 공유: Quest 2 VRAM 누수 방지)
   private labels!: TargetLabels;
@@ -322,7 +327,6 @@ export class ShootingArenaEngine {
     this.container = container;
     this.currentTheme = initialTheme;
     this.scene = new THREE.Scene();
-    this.clock = new THREE.Clock();
 
     // 1. 카메라 설정
     this.camera = new THREE.PerspectiveCamera(
@@ -346,15 +350,8 @@ export class ShootingArenaEngine {
     configureRenderer(this.renderer);
     this.renderer.xr.enabled = true;
 
-    this.renderer.xr.addEventListener('sessionstart', () => {
-      requestTargetFrameRate(this.renderer.xr.getSession());
-      this.startGame();
-    });
-    this.renderer.xr.addEventListener('sessionend', () => {
-      if (this.isPlaying) {
-        this.abortGame('플레이어 VR 세션 종료');
-      }
-    });
+    this.renderer.xr.addEventListener('sessionstart', this.onXRSessionStart);
+    this.renderer.xr.addEventListener('sessionend', this.onXRSessionEnd);
 
     container.appendChild(this.renderer.domElement);
 
@@ -401,8 +398,43 @@ export class ShootingArenaEngine {
     window.addEventListener('pointermove', this.onPointerMove);
     this.renderer.domElement.addEventListener('pointerdown', this.onCanvasPointerDown);
 
-    // 7. Three.js 공식 WebXR VRButton: 화면에는 숨기고 메뉴·HUD의 'VR 시작' 버튼이 대신 눌러 줌
-    //    (VR 세션 요청과 Quest 브라우저의 자동 VR 제안(offerSession)은 그대로 동작)
+    // 7. Three.js 공식 WebXR VRButton (한 틱 뒤에 만듦).
+    //    개발 모드(StrictMode)는 엔진을 만들었다 바로 버리고 다시 만들므로, 살아남은 엔진만 버튼을 만들게 함
+    //    (버린 엔진의 버튼이 Quest 브라우저의 VR 제안(offerSession)을 버린 렌더러에 묶어 두지 않도록)
+    this.vrButtonTimer = setTimeout(() => {
+      this.vrButtonTimer = null;
+      if (!this.disposed) this.attachVRButton();
+    }, 0);
+
+    if (PerfPanel.isEnabled()) {
+      this.perfPanel = new PerfPanel(this.renderer);
+      this.perfText = this.texts.create({ text: '', font: 'num', size: 0.022, color: 0x9fe8ff, anchorX: 'left', lineHeight: 1.2 });
+      this.perfText.rotation.set(-0.9, 0, 0);
+      this.perfText.visible = false;
+    }
+
+    // 8. 렌더 루프 시작. 첫 화면·접속 처리를 막지 않도록 잠시 뒤 셰이더를 미리 컴파일
+    this.renderer.setAnimationLoop(this.animate);
+    this.scheduleWarmUp(800);
+  }
+
+  /** VR 세션이 시작되면 72Hz를 요청하고 경기 시작 */
+  private onXRSessionStart = () => {
+    requestTargetFrameRate(this.renderer.xr.getSession());
+    this.startGame();
+  };
+
+  private onXRSessionEnd = () => {
+    if (this.isPlaying) {
+      this.abortGame('플레이어 VR 세션 종료');
+    }
+  };
+
+  /**
+   * Three.js 공식 WebXR VRButton: 화면에는 숨기고 메뉴·HUD의 'VR 시작' 버튼이 대신 눌러 줌
+   * (VR 세션 요청과 Quest 브라우저의 자동 VR 제안(offerSession)은 그대로 동작)
+   */
+  private attachVRButton() {
     try {
       const vrBtn = VRButton.createButton(this.renderer);
       vrBtn.id = 'three-vr-button';
@@ -415,17 +447,6 @@ export class ShootingArenaEngine {
     } catch (e) {
       console.warn('WebXR VRButton attach warning:', e);
     }
-
-    if (PerfPanel.isEnabled()) {
-      this.perfPanel = new PerfPanel(this.renderer);
-      this.perfText = this.texts.create({ text: '', font: 'num', size: 0.022, color: 0x9fe8ff, anchorX: 'left', lineHeight: 1.2 });
-      this.perfText.rotation.set(-0.9, 0, 0);
-      this.perfText.visible = false;
-    }
-
-    // 8. 렌더 루프 시작. 첫 화면·접속 처리를 막지 않도록 잠시 뒤 셰이더를 미리 컴파일
-    this.renderer.setAnimationLoop(this.animate);
-    this.scheduleWarmUp(800);
   }
 
   /** 잠시 뒤 셰이더 예열 (이미 예약돼 있으면 새로 예약) */
@@ -1108,7 +1129,7 @@ export class ShootingArenaEngine {
   // 4. 사격, 명중 판정, 폭발 파티클
   // ==========================================
   public handleFire() {
-    if (this.clientRole === 'SPECTATOR') return;
+    if (this.disposed || this.clientRole === 'SPECTATOR') return;
 
     if (!this.isPlaying) {
       this.startGame();
@@ -1219,7 +1240,7 @@ export class ShootingArenaEngine {
     if (locked) {
       v.lockRing.position.copy(this._aimPoint);
       v.lockRing.quaternion.copy(this._camQuat);
-      v.lockRing.scale.setScalar(dist * 0.022 * (1 + 0.08 * Math.sin(this.clock.elapsedTime * 9)));
+      v.lockRing.scale.setScalar(dist * 0.022 * (1 + 0.08 * Math.sin(this.timer.getElapsed() * 9)));
     }
   }
 
@@ -1266,7 +1287,7 @@ export class ShootingArenaEngine {
   }
 
   public handleReload() {
-    if (this.clientRole === 'SPECTATOR') return;
+    if (this.disposed || this.clientRole === 'SPECTATOR') return;
     if (!this.isPlaying) {
       // 대기/게임오버 상태에서 그립을 쥐면 VR 모드 종료 후 브라우저 복귀
       this.exitVR();
@@ -1418,6 +1439,7 @@ export class ShootingArenaEngine {
 
   /** 경기 시작 요청 (방아쇠, 시작 버튼, VR 진입). 서버 경기면 서버의 시작 신호에 맞춰 모두 함께 시작 */
   public startGame() {
+    if (this.disposed) return;
     // 관전 화면 운영자가 시연 중에 경기를 시작하면 시연을 조용히 끝내고 실제 경기를 요청
     if (this.isPlaying && this.demoActive && this.shouldUseServerMatch()) {
       this.stopDemo();
@@ -1441,7 +1463,7 @@ export class ShootingArenaEngine {
    * 몇 시간씩 반복되므로 소리를 내지 않음
    */
   public startLocalDemo() {
-    if (this.isPlaying || this.pendingStartTimer) return;
+    if (this.disposed || this.isPlaying || this.pendingStartTimer) return;
     this.startGameLocal(null, true);
   }
 
@@ -1677,7 +1699,8 @@ export class ShootingArenaEngine {
   }
 
   private animate = () => {
-    const delta = Math.min(this.clock.getDelta(), 0.1);
+    this.timer.update();
+    const delta = Math.min(Math.max(this.timer.getDelta(), 0), 0.1);
 
     // 1. 게임 타이머 관리
     if (this.isPlaying && !this.isPaused) {
@@ -1975,7 +1998,7 @@ export class ShootingArenaEngine {
         label1: aiSeat === 1 ? VR_TEXT.ai : VR_TEXT.p1,
         label2: aiSeat === 2 ? VR_TEXT.ai : VR_TEXT.p2,
       },
-      this.clock.elapsedTime
+      this.timer.getElapsed()
     );
     this.scoreboard.tick(delta);
 
@@ -2080,6 +2103,16 @@ export class ShootingArenaEngine {
 
   public dispose() {
     this.disposed = true;
+    // VR: 엔진 리스너를 먼저 떼고(세션 종료가 경기 중단을 보내지 않게) 진행 중인 세션을 끝냄
+    // (three의 WebXRManager.dispose는 세션을 끝내지 않음)
+    this.renderer.xr.removeEventListener('sessionstart', this.onXRSessionStart);
+    this.renderer.xr.removeEventListener('sessionend', this.onXRSessionEnd);
+    this.renderer.xr.getSession()?.end().catch(() => {});
+    if (this.vrButtonTimer) {
+      clearTimeout(this.vrButtonTimer);
+      this.vrButtonTimer = null;
+    }
+    this.detachCallbacks();
     if (this.warmUpTimer) clearTimeout(this.warmUpTimer);
     // 소리 관리자는 앱 전체가 함께 쓰므로 시연 중 꺼 둔 소리를 되살려 둠
     this.setDemoActive(false);
@@ -2126,6 +2159,39 @@ export class ShootingArenaEngine {
       this.container.removeChild(this.renderer.domElement);
     }
     this.renderer.dispose();
+    // 가비지 수집을 기다리지 않고 WebGL 메모리(화면 크기 버퍼 포함)를 바로 돌려줌
+    this.renderer.forceContextLoss();
+    this.timer.dispose();
+  }
+
+  /**
+   * 버린 엔진이 화면·서버를 움직이지 않도록 등록한 콜백을 비움.
+   * 소켓은 끊지 않음: InputManager는 앱 전체가 함께 쓰는 싱글턴이고, 개발 모드에서 엔진을 다시 만들 때도 연결 하나를 그대로 씀
+   */
+  private detachCallbacks() {
+    const im = this.inputManager;
+    im.onFireCallback = undefined;
+    im.onReloadCallback = undefined;
+    im.onClientAssigned = undefined;
+    im.onRoomStateChange = undefined;
+    im.onRemotePose = undefined;
+    im.onRemoteFire = undefined;
+    im.onRemoteTargetSpawn = undefined;
+    im.onTargetHitConfirmed = undefined;
+    im.onMatchStarted = undefined;
+    im.onMatchState = undefined;
+    im.onMatchOverBroadcast = undefined;
+    im.onMatchAborted = undefined;
+    im.onMatchPaused = undefined;
+    im.onMatchResumed = undefined;
+    im.onMatchClock = undefined;
+    im.onConnectionIssue = undefined;
+    this.onStatsUpdate = undefined;
+    this.onVersusStatsUpdate = undefined;
+    this.onGameOver = undefined;
+    this.onGameStarted = undefined;
+    this.onPauseChange = undefined;
+    this.onDifficultySync = undefined;
   }
 }
 

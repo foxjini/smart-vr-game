@@ -136,8 +136,11 @@ export class VoiceManager {
 
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-          playPromise.catch((err) => {
-            console.warn('Audio playback error (Autoplay blocked):', err);
+          playPromise.catch((err: unknown) => {
+            // 화면을 한 번도 클릭하지 않은 기기(관전 TV 등)는 브라우저가 소리를 막고(NotAllowedError),
+            // 다음 안내가 앞 안내를 끊으면 AbortError가 남: 둘 다 정상이므로 조용히 넘어감
+            if (err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'AbortError')) return;
+            console.warn('Audio playback error:', err);
           });
         }
       } catch (e) {

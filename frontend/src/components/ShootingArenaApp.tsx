@@ -202,7 +202,7 @@ export default function ShootingArenaApp() {
     const engine = new ShootingArenaEngine(containerRef.current, readSavedTheme());
     engineRef.current = engine;
 
-    engine.setSoundPreset(DEFAULT_SOUND_PRESET);
+    // 효과음 종류는 SoundManager 기본값(레이저)을 그대로 씀. setSoundPreset은 미리 듣기 소리를 내므로 처음 열 때는 부르지 않음
     engine.setMasterVolume(DEFAULT_SOUND_VOLUME);
     VoiceManager.getInstance().setEnabled(true);
     VoiceManager.getInstance().setVolume(DEFAULT_VOICE_VOLUME);
@@ -332,7 +332,9 @@ export default function ShootingArenaApp() {
 
     return () => {
       if (demoTimer) clearTimeout(demoTimer);
+      // 엔진이 등록한 입력 콜백은 engine.dispose()가 비움. 소켓은 앱 전체가 함께 쓰므로 그대로 둠
       engine.dispose();
+      inputMgr.onStatusChange = undefined;
       engineRef.current = null;
     };
   }, []);
@@ -543,7 +545,13 @@ export default function ShootingArenaApp() {
         const session = await navXR.requestSession('immersive-vr', {
           optionalFeatures: ['local-floor', 'bounded-floor'],
         });
-        await renderer.xr.setSession(session);
+        // 허가 창을 기다리는 사이 엔진이 다시 만들어졌을 수 있으므로 지금 살아 있는 렌더러에 붙임
+        const liveRenderer = engineRef.current?.getRenderer();
+        if (!liveRenderer) {
+          await session.end();
+          return;
+        }
+        await liveRenderer.xr.setSession(session);
         handleStartGame();
       } catch (err) {
         console.error('Failed to enter WebXR:', err);

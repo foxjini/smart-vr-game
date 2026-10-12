@@ -26,7 +26,8 @@ export const VR_TEXT = {
   accuracy: '명중률',
   bestCombo: '최고 연속',
   restartHint: '트리거: 다시 시작',
-  exitHint: '그립 1초: VR 종료',
+  // 경기 밖에서는 그립·A·B·X·Y를 누르는 즉시 VR이 끝남 (경기 중 A·B·X·Y는 1.2초 길게)
+  exitHint: '그립 또는 A·B 버튼: VR 종료',
   // 결과판 승자 문구 (ui/matchInfo.ts의 winnerHeadline과 같은 글자)
   win1: '1P 승리',
   win2: '2P 승리',
