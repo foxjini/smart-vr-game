@@ -10,7 +10,8 @@ import { SettingsModal } from '@/components/ui/SettingsModal';
 import { GameOverModal } from '@/components/ui/GameOverModal';
 import { MainMenuModal } from '@/components/ui/MainMenuModal';
 import { LeaderboardModal } from '@/components/ui/LeaderboardModal';
-import { CyberCrosshair } from '@/components/ui/CyberCrosshair';
+import { AimReticle } from '@/components/ui/hud/AimReticle';
+import { MatchResultSummary, aiSlotOf, normalizeWinner } from '@/components/ui/matchInfo';
 import {
   ThemeType,
   TargetShape,
@@ -63,6 +64,30 @@ function readSavedHighScore(): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+/** 관전 대기 화면에 보여 줄 최근 경기 (이 기기에서 본 경기, 최대 5개) */
+const RECENT_MATCHES_KEY = 'cyber_strike_recent_matches_v1';
+
+function readRecentMatches(): MatchResultSummary[] {
+  try {
+    const raw = localStorage.getItem(RECENT_MATCHES_KEY);
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return [];
+    // 형식이 다른 옛 기록은 건너뜀
+    return list
+      .filter(
+        (m): m is MatchResultSummary =>
+          m && typeof m === 'object' && typeof m.p1Score === 'number' && typeof m.p2Score === 'number' && typeof m.endedAt === 'number' && typeof m.winner === 'string'
+      )
+      .slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+/** 관전 화면: 실제 경기 결과를 보여 주는 시간 / 시연이 끝난 뒤 다음 시연까지 쉬는 시간 */
+const SPECTATOR_RESULT_MS = 20000;
+const DEMO_RESTART_MS = 5000;
+
 // page.tsx에서 브라우저 전용(ssr: false)으로 불러오므로 초기값에 window·localStorage를 바로 사용할 수 있음
 export default function ShootingArenaApp() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -80,6 +105,7 @@ export default function ShootingArenaApp() {
     spectator_count: 0,
   });
   const [serverHost, setServerHost] = useState<string>(() => window.location.hostname || 'localhost');
+  const [isP1Connected, setIsP1Connected] = useState<boolean>(false);
   const [isP2Connected, setIsP2Connected] = useState<boolean>(false);
   const [sensitivity, setSensitivity] = useState<number>(1.0);
   const [isVRSupported, setIsVRSupported] = useState<boolean>(false);
@@ -125,9 +151,16 @@ export default function ShootingArenaApp() {
 
   const [highScore, setHighScore] = useState<number>(readSavedHighScore);
 
+  // 경기 결과 (플레이어 결과창 · 관전 결과 화면이 같은 요약을 씀)
+  const [lastResult, setLastResult] = useState<MatchResultSummary | null>(null);
+  const [isDemo, setIsDemo] = useState<boolean>(false);
+  const [spectatorResult, setSpectatorResult] = useState<MatchResultSummary | null>(null);
+  const [spectatorResultUntil, setSpectatorResultUntil] = useState<number>(0);
+  const [recentMatches, setRecentMatches] = useState<MatchResultSummary[]>(readRecentMatches);
+
   // 모달 상태
-  // 관람 중계 주소(?role=spectator)로 열면 메인 메뉴 없이 바로 중계 화면
-  const [isMainMenuOpen, setIsMainMenuOpen] = useState<boolean>(() => readUrlRole() !== 'SPECTATOR');
+  // 관전 역할(주소의 ?role=spectator 또는 이 기기에 고정한 역할)이면 메인 메뉴 없이 바로 중계 화면
+  const [isMainMenuOpen, setIsMainMenuOpen] = useState<boolean>(() => readInitialRole() !== 'SPECTATOR');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isGameOverOpen, setIsGameOverOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
@@ -178,19 +211,57 @@ export default function ShootingArenaApp() {
 
     engine.onGameStarted = () => {
       setIsPlaying(true);
+      setIsDemo(engine.isDemoRunning);
       setIsMainMenuOpen(false);
       setIsGameOverOpen(false);
       setIsLeaderboardOpen(false);
+      setSpectatorResult(null);
     };
 
     engine.onGameOver = (finalStats, result) => {
       setIsPlaying(false);
+      setIsDemo(false);
       if (result.aborted) {
         // 중단된 경기는 결과 등록 없이 정리 (플레이어는 메인 메뉴로, 관람 화면은 중계 화면 유지)
         setIsGameOverOpen(false);
         if (engine.clientRole !== 'SPECTATOR') {
           setIsMainMenuOpen(true);
         }
+        return;
+      }
+      // 관전 시연은 결과 없이 대기 화면으로 (잠시 뒤 다시 시연)
+      if (result.demo) return;
+
+      const im = InputManager.getInstance();
+      const v = result.versus;
+      const summary: MatchResultSummary = {
+        winner: normalizeWinner(result.winner, v.p1Score, v.p2Score),
+        p1Score: v.p1Score,
+        p2Score: v.p2Score,
+        p1Hits: v.p1Hits,
+        p2Hits: v.p2Hits,
+        p1Accuracy: v.p1Accuracy,
+        p2Accuracy: v.p2Accuracy,
+        p1MaxCombo: v.p1MaxCombo ?? 0,
+        p2MaxCombo: v.p2MaxCombo ?? 0,
+        aiSlot: aiSlotOf(v.mode, im.isP1Connected, im.isP2Connected, engine.clientRole),
+        endedAt: Date.now(),
+      };
+      setLastResult(summary);
+      setRecentMatches((prev) => {
+        const next = [summary, ...prev].slice(0, 5);
+        try {
+          localStorage.setItem(RECENT_MATCHES_KEY, JSON.stringify(next));
+        } catch {
+          // 저장 공간이 없으면 이번 화면에서만 보여 줌
+        }
+        return next;
+      });
+
+      if (engine.clientRole === 'SPECTATOR') {
+        // 관전 화면은 기록 등록 없이 중계용 결과 화면
+        setSpectatorResult(summary);
+        setSpectatorResultUntil(Date.now() + SPECTATOR_RESULT_MS);
         return;
       }
       setIsGameOverOpen(true);
@@ -206,6 +277,7 @@ export default function ShootingArenaApp() {
       setSystemStatus(status);
       setIsWsConnected(wsConnected);
       setConnectionIssue(inputMgr.connectionIssue);
+      setIsP1Connected(inputMgr.isP1Connected);
       setIsP2Connected(inputMgr.isP2Connected);
     };
 
@@ -214,12 +286,14 @@ export default function ShootingArenaApp() {
     inputMgr.onClientAssigned = (role, playerId) => {
       if (engineOnClientAssigned) engineOnClientAssigned(role, playerId);
       setClientRole(role);
+      setIsP1Connected(inputMgr.isP1Connected);
       setIsP2Connected(inputMgr.isP2Connected);
     };
 
     const engineOnRoomStateChange = inputMgr.onRoomStateChange;
     inputMgr.onRoomStateChange = (state) => {
       if (engineOnRoomStateChange) engineOnRoomStateChange(state);
+      setIsP1Connected(Boolean(state.p1Connected));
       setIsP2Connected(Boolean(state.p2Connected));
     };
 
@@ -231,9 +305,9 @@ export default function ShootingArenaApp() {
     let demoTimer: ReturnType<typeof setTimeout> | undefined;
     if (initRole === 'SPECTATOR') {
       engine.setSpectatorCameraMode('STADIUM');
-      // 1P가 아직 없으면 관람 화면에서 AI 시연을 보여줌 (서버 경기에는 영향 없음, 실제 경기가 시작되면 자동 전환)
+      // 진행 중인 경기가 없으면 관람 화면에서 AI 시연을 보여줌 (서버 경기에는 영향 없음, 실제 경기가 시작되면 자동 전환)
       demoTimer = setTimeout(() => {
-        if (!inputMgr.isP1Connected && !engine.isPlaying) {
+        if (!engine.isPlaying) {
           engine.startLocalDemo();
         }
       }, 400);
@@ -253,10 +327,25 @@ export default function ShootingArenaApp() {
     }
   }, []);
 
+  // 관전 화면 순환: 실제 경기 결과(20초) 또는 시연 종료 → 대기 화면 → 잠시 뒤 AI 시연 다시 시작
+  useEffect(() => {
+    if (clientRole !== 'SPECTATOR' || isPlaying || isMainMenuOpen) return;
+    const delay = spectatorResult ? Math.max(0, spectatorResultUntil - Date.now()) : DEMO_RESTART_MS;
+    const timer = setTimeout(() => {
+      setSpectatorResult(null);
+      const engine = engineRef.current;
+      if (engine && !engine.isPlaying) engine.startLocalDemo();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [clientRole, isPlaying, isMainMenuOpen, spectatorResult, spectatorResultUntil]);
+
   // 관람 카메라 단축키 바인딩 (1, 2, 3, 4)
   useEffect(() => {
     const handleCamKey = (e: KeyboardEvent) => {
       if (clientRole !== 'SPECTATOR') return;
+      // 설정 창에서 서버 주소(숫자)를 입력하는 중에는 카메라를 바꾸지 않음
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('input, textarea, select')) return;
       if (e.key === '1') handleSelectSpectatorCamera('STADIUM');
       if (e.key === '2') handleSelectSpectatorCamera('P1_VIEW');
       if (e.key === '3') handleSelectSpectatorCamera('P2_VIEW');
@@ -288,12 +377,16 @@ export default function ShootingArenaApp() {
   }, []);
 
   const handleAbortGame = useCallback(() => {
-    if (engineRef.current) {
-      engineRef.current.abortGame('관리자 또는 사용자에 의한 경기 강제 중단');
+    const engine = engineRef.current;
+    if (engine) {
+      engine.abortGame('관리자 또는 사용자에 의한 경기 강제 중단');
     }
     setIsPlaying(false);
     setIsGameOverOpen(false);
-    setIsMainMenuOpen(true);
+    // 관전 화면은 메뉴 대신 중계 화면(대기 화면)을 유지
+    if (!engine || engine.clientRole !== 'SPECTATOR') {
+      setIsMainMenuOpen(true);
+    }
   }, []);
 
   // ESC 키로 경기 즉시 중단 또는 열린 모달 닫기
@@ -314,20 +407,27 @@ export default function ShootingArenaApp() {
   }, [isPlaying, isSettingsOpen, isLeaderboardOpen, handleAbortGame]);
 
   const handleSelectRole = useCallback((role: ClientRole) => {
+    const engine = engineRef.current;
+    const wasSpectator = engine?.clientRole === 'SPECTATOR';
     setClientRole(role);
     InputManager.getInstance().setRequestedRole(role);
-    if (engineRef.current) {
-      engineRef.current.setRole(role, true);
+    if (engine) {
+      engine.setRole(role, true);
       if (role === 'SPECTATOR') {
-        engineRef.current.setSpectatorCameraMode('STADIUM');
+        engine.setSpectatorCameraMode('STADIUM');
       }
+    }
+    if (wasSpectator && role !== 'SPECTATOR') {
+      // 관전 화면이던 기기를 플레이어로 바꾸면 로비(메인 메뉴)로
+      setSpectatorResult(null);
+      setIsMainMenuOpen(true);
     }
   }, []);
 
   const handleJoinAsSpectator = useCallback(() => {
     handleSelectRole('SPECTATOR');
-    if (engineRef.current && !InputManager.getInstance().isP1Connected && !engineRef.current.isPlaying) {
-      // 1P가 없으면 관람 화면 AI 시연 (서버 경기에는 영향 없음)
+    if (engineRef.current && !engineRef.current.isPlaying) {
+      // 진행 중인 경기가 없으면 관람 화면 AI 시연 (서버 경기에는 영향 없음)
       engineRef.current.startLocalDemo();
     }
     setSpectatorCameraMode('STADIUM');
@@ -432,12 +532,15 @@ export default function ShootingArenaApp() {
     }
   }, [handleStartGame]);
 
+  // 플레이어가 PC로 경기 중이면 마우스 화살표 대신 실제 조준점(AimReticle)만 보이게 함
+  const isAiming = isPlaying && clientRole !== 'SPECTATOR';
+
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-black select-none">
       {/* 1. Three.js 3D WebGL 렌더링 컨테이너 */}
-      <div id="canvas-container" ref={containerRef} />
+      <div id="canvas-container" ref={containerRef} className={isAiming && !isPaused ? 'cursor-none' : undefined} />
 
-      {/* 2. 1:1 대결 & 옵저버 HUD 오버레이 (메인 메뉴 닫힘 시 활성화) */}
+      {/* 2. 플레이어 HUD 또는 관전 중계 화면 (메인 메뉴 닫힘 시 활성화) */}
       {!isMainMenuOpen && (
         <GameHUD
           stats={stats}
@@ -458,12 +561,18 @@ export default function ShootingArenaApp() {
           isVRSupported={isVRSupported}
           spectatorCameraMode={spectatorCameraMode}
           onSelectSpectatorCamera={handleSelectSpectatorCamera}
+          isP1Connected={isP1Connected}
+          isP2Connected={isP2Connected}
+          isDemo={isDemo}
+          spectatorResult={spectatorResult}
+          spectatorResultUntil={spectatorResultUntil}
+          recentMatches={recentMatches}
         />
       )}
 
-      {/* 2.5 인게임 정밀 HUD 조준선 */}
-      {isPlaying && clientRole !== 'SPECTATOR' && (
-        <CyberCrosshair opacity={0.45} />
+      {/* 2.5 PC 조준점 (실제로 겨누는 곳을 따라감) */}
+      {isAiming && (
+        <AimReticle engineRef={engineRef} hits={stats.hits} slot={clientRole === 'P2' ? 2 : 1} dimmed={isPaused} />
       )}
 
       {/* 3. 메인 메뉴 모달 */}
@@ -481,6 +590,7 @@ export default function ShootingArenaApp() {
         highScore={highScore}
         clientRole={clientRole}
         versusMode={versusStats.mode}
+        isP1Connected={isP1Connected}
         isP2Connected={isP2Connected}
         connectionIssue={connectionIssue}
       />
@@ -511,12 +621,11 @@ export default function ShootingArenaApp() {
         onSelectRole={handleSelectRole}
       />
 
-      {/* 5. 게임오버 결과 모달 (1:1 스탯 비교) - 열릴 때마다 새로 마운트해 기록 등록 상태 초기화 */}
-      {isGameOverOpen && (
+      {/* 5. 플레이어 결과창 (관전 화면은 중계 화면 안의 결과 화면) - 열릴 때마다 새로 마운트해 기록 등록 상태 초기화 */}
+      {isGameOverOpen && lastResult && clientRole !== 'SPECTATOR' && (
         <GameOverModal
-          isOpen={isGameOverOpen}
           stats={stats}
-          versusStats={versusStats}
+          result={lastResult}
           clientRole={clientRole}
           highScore={highScore}
           difficulty={currentDifficulty}

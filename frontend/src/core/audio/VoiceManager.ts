@@ -95,7 +95,7 @@ export class VoiceManager {
 
   /** 한국어 음성 안내 멘트 재생 (내장 MP3 파일 기반으로 100% 호환) */
   public speak(event: VoiceEventType) {
-    if (!this.isVoiceEnabled) return;
+    if (!this.isVoiceEnabled || this.suppressed) return;
     if (typeof window === 'undefined') return;
 
     // 너무 잦은 음성 겹침 방지 (최소 0.6초 간격)
@@ -164,6 +164,12 @@ export class VoiceManager {
         // ignore
       }
     }
+  }
+
+  /** 관전 화면 대기용 시연처럼 잠시 안내 음성을 내지 않을 때 (켜기·끄기 설정은 그대로) */
+  private suppressed = false;
+  public setSuppressed(suppressed: boolean) {
+    this.suppressed = suppressed;
   }
 
   public setVolume(volume: number) {

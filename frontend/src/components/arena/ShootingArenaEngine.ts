@@ -78,6 +78,26 @@ interface LaserBolt {
   targetHit?: { target: TargetObject; point: THREE.Vector3; color: number };
 }
 
+/** PC 조준점 화면 위치 (CSS 픽셀, 화면 왼쪽 위 기준) */
+export interface AimScreenPoint {
+  x: number;
+  y: number;
+  /** 조준선이 표적 위에 있음 */
+  locked: boolean;
+  /** 겨누는 표적의 점수 (없으면 0) */
+  points: number;
+}
+
+/** 경기가 끝났을 때 전달하는 결과 */
+export interface MatchEndResult {
+  winner: string;
+  aborted: boolean;
+  /** 관전 화면 대기용 AI 시연이 끝난 것 (결과창 없음) */
+  demo: boolean;
+  /** 두 선수 최종 기록 */
+  versus: VersusMatchStats;
+}
+
 interface BlasterRig {
   group: THREE.Group;
   displayMesh: THREE.Mesh;
@@ -154,7 +174,7 @@ export class ShootingArenaEngine {
   // 콜백
   public onStatsUpdate?: (stats: GameStats) => void;
   public onVersusStatsUpdate?: (stats: VersusMatchStats) => void;
-  public onGameOver?: (finalStats: GameStats, result: { winner: string; aborted: boolean }) => void;
+  public onGameOver?: (finalStats: GameStats, result: MatchEndResult) => void;
   public onGameStarted?: () => void;
   public onPauseChange?: (paused: boolean) => void;
   /** 서버 경기의 난이도가 로컬 설정과 달라 동기화했을 때 */
@@ -168,6 +188,8 @@ export class ShootingArenaEngine {
   private timeSinceRemoteSpawn: number = 0;
   /** 서버 경기 종료 예정 시각 (performance.now 기준, 일시정지·로컬 경기는 null) */
   private matchClockEndsAt: number | null = null;
+  /** 관전 화면 대기용 AI 시연 중 (소리 끔, 결과창 없음) */
+  private demoActive = false;
 
   // 3D 오브젝트들
   /** 내 카메라·VR 컨트롤러·안내판을 담는 리그 (슬롯 위치로 이동) */
@@ -230,6 +252,17 @@ export class ShootingArenaEngine {
   private poseSendTimer: number = 0;
   private lastFireTime: number = 0;
   private raycaster = new THREE.Raycaster();
+  // PC 조준점 계산용 (매 프레임 호출되므로 객체를 재사용)
+  private aimRaycaster = new THREE.Raycaster();
+  private aimOrigin = new THREE.Vector3();
+  private aimDir = new THREE.Vector3();
+  private aimQuat = new THREE.Quaternion();
+  private aimPoint = new THREE.Vector3();
+  private aimMeshes: THREE.Object3D[] = [];
+  private aimHits: THREE.Intersection[] = [];
+  private collectAimMesh = (o: THREE.Object3D) => {
+    if ((o as THREE.Mesh).isMesh) this.aimMeshes.push(o);
+  };
   /** 개발용 성능 표시 (?debug=perf일 때만) */
   private perfPanel?: PerfPanel;
 
@@ -307,25 +340,15 @@ export class ShootingArenaEngine {
     window.addEventListener('pointermove', this.onPointerMove);
     this.renderer.domElement.addEventListener('pointerdown', this.onCanvasPointerDown);
 
-    // 7. Three.js 공식 WebXR VRButton 최상위 DOM 부착
+    // 7. Three.js 공식 WebXR VRButton: 화면에는 숨기고 메뉴·HUD의 'VR 시작' 버튼이 대신 눌러 줌
+    //    (VR 세션 요청과 Quest 브라우저의 자동 VR 제안(offerSession)은 그대로 동작)
     try {
       const vrBtn = VRButton.createButton(this.renderer);
       vrBtn.id = 'three-vr-button';
-      vrBtn.style.zIndex = '99999';
-      vrBtn.style.position = 'fixed';
-      vrBtn.style.bottom = '28px';
-      vrBtn.style.left = '50%';
-      vrBtn.style.transform = 'translateX(-50%)';
-      vrBtn.style.padding = '14px 32px';
-      vrBtn.style.fontSize = '18px';
-      vrBtn.style.fontWeight = 'bold';
-      vrBtn.style.letterSpacing = '2px';
-      vrBtn.style.borderRadius = '32px';
-      vrBtn.style.border = '2px solid #00f0ff';
-      vrBtn.style.background = 'rgba(8, 16, 32, 0.92)';
-      vrBtn.style.color = '#00f0ff';
-      vrBtn.style.cursor = 'pointer';
-      vrBtn.style.boxShadow = '0 0 24px rgba(0, 240, 255, 0.4)';
+      vrBtn.style.visibility = 'hidden';
+      vrBtn.style.pointerEvents = 'none';
+      vrBtn.setAttribute('aria-hidden', 'true');
+      vrBtn.tabIndex = -1;
       document.body.appendChild(vrBtn);
       this.vrButtonElement = vrBtn;
     } catch (e) {
@@ -1677,21 +1700,27 @@ export class ShootingArenaEngine {
     }
   }
 
+  private buildVersusStats(): VersusMatchStats {
+    return {
+      mode: this.inputManager.versusMode,
+      timeRemaining: this.stats.timeRemaining,
+      p1Score: this.stats.score,
+      p1Hits: this.stats.hits,
+      p1Combo: this.stats.combo,
+      p1Accuracy: this.stats.accuracy,
+      p1MaxCombo: this.stats.maxCombo,
+      p2Score: this.p2Stats.score,
+      p2Hits: this.p2Stats.hits,
+      p2Combo: this.p2Stats.combo,
+      p2Accuracy: this.p2Stats.accuracy,
+      p2MaxCombo: this.p2Stats.maxCombo,
+      spectatorCount: this.inputManager.spectatorCount,
+    };
+  }
+
   private notifyVersusStats() {
     if (this.onVersusStatsUpdate) {
-      this.onVersusStatsUpdate({
-        mode: this.inputManager.versusMode,
-        timeRemaining: this.stats.timeRemaining,
-        p1Score: this.stats.score,
-        p1Hits: this.stats.hits,
-        p1Combo: this.stats.combo,
-        p1Accuracy: this.stats.accuracy,
-        p2Score: this.p2Stats.score,
-        p2Hits: this.p2Stats.hits,
-        p2Combo: this.p2Stats.combo,
-        p2Accuracy: this.p2Stats.accuracy,
-        spectatorCount: this.inputManager.spectatorCount,
-      });
+      this.onVersusStatsUpdate(this.buildVersusStats());
     }
   }
 
@@ -1755,6 +1784,10 @@ export class ShootingArenaEngine {
 
   /** 경기 시작 요청 (방아쇠, 시작 버튼, VR 진입). 서버 경기면 서버의 시작 신호에 맞춰 모두 함께 시작 */
   public startGame() {
+    // 관전 화면 운영자가 시연 중에 경기를 시작하면 시연을 조용히 끝내고 실제 경기를 요청
+    if (this.isPlaying && this.demoActive && this.shouldUseServerMatch()) {
+      this.stopDemo();
+    }
     if (this.isPlaying || this.pendingStartTimer) return;
     // 내 역할 자리를 다른 기기가 쓰는 중이면 혼자만 보이는 로컬 경기를 시작하지 않음
     if (this.inputManager.connectionIssue) return;
@@ -1769,18 +1802,40 @@ export class ShootingArenaEngine {
     this.startGameLocal(null);
   }
 
-  /** 관람 화면 대기용 AI 시연 (서버 경기에 영향 없음, 실제 경기가 시작되면 자동 전환) */
+  /**
+   * 관람 화면 대기용 AI 시연 (서버 경기에 영향 없음, 실제 경기가 시작되면 자동 전환).
+   * 몇 시간씩 반복되므로 소리를 내지 않음
+   */
   public startLocalDemo() {
     if (this.isPlaying || this.pendingStartTimer) return;
-    this.startGameLocal(null);
+    this.startGameLocal(null, true);
+  }
+
+  /** 대기용 시연을 조용히 끝냄 (결과창·소리 없음) */
+  public stopDemo() {
+    if (this.isPlaying && this.demoActive) {
+      this.stopGameLocal('ABORT');
+    }
+  }
+
+  /** 대기용 시연이 진행 중인지 */
+  public get isDemoRunning(): boolean {
+    return this.isPlaying && this.demoActive;
+  }
+
+  private setDemoActive(active: boolean) {
+    this.demoActive = active;
+    this.soundManager.setSuppressed(active);
+    this.voiceManager.setSuppressed(active);
   }
 
   /** 경기 시작 (info가 있으면 서버 경기의 남은 시간·난이도·점수에 맞춰 합류) */
-  private startGameLocal(info: MatchInfo | null) {
+  private startGameLocal(info: MatchInfo | null, demo: boolean = false) {
     if (this.pendingStartTimer) {
       clearTimeout(this.pendingStartTimer);
       this.pendingStartTimer = null;
     }
+    this.setDemoActive(demo && info === null);
     this.matchId = info ? info.matchId : null;
     if (info?.difficulty && info.difficulty !== this.currentDifficulty) {
       this.setDifficulty(info.difficulty);
@@ -1925,9 +1980,12 @@ export class ShootingArenaEngine {
     this.notifyStats();
     this.notifyVersusStats();
     if (this.onPauseChange) this.onPauseChange(false);
+    // 시연 중에는 위의 종료음·음성도 꺼져 있었음. 이제 다음 경기를 위해 소리를 되살림
+    const wasDemo = this.demoActive;
+    if (wasDemo) this.setDemoActive(false);
     if (this.onGameOver) {
       const myFinalStats = this.clientRole === 'P2' ? this.p2Stats : this.stats;
-      this.onGameOver({ ...myFinalStats }, { winner, aborted });
+      this.onGameOver({ ...myFinalStats }, { winner, aborted, demo: wasDemo, versus: this.buildVersusStats() });
     }
   }
 
@@ -2295,6 +2353,8 @@ export class ShootingArenaEngine {
 
   public setRole(role: ClientRole, notifyServer: boolean = false) {
     const changed = role !== this.clientRole;
+    // 관전 시연 중에 플레이어로 바뀌면 시연을 끝냄 (시연 AI와 섞이지 않게)
+    if (changed && this.demoActive) this.stopDemo();
     this.clientRole = role;
     if (notifyServer) {
       this.inputManager.setRequestedRole(role);
@@ -2308,8 +2368,53 @@ export class ShootingArenaEngine {
     return this.renderer;
   }
 
+  /**
+   * PC 조준점의 화면 위치: 총구 광선이 처음 닿는 표적(없으면 30m 앞)을 화면 좌표로 바꿈.
+   * 사격 판정(handleFire)과 같은 광선·같은 표적 메시를 써서 보이는 곳 = 맞는 곳.
+   * 관전 화면이거나 VR 중이면 false
+   */
+  public getAimScreenPoint(out: AimScreenPoint): boolean {
+    if (this.localSlot === null || this.renderer.xr.isPresenting) return false;
+    const blaster = this.getLocalBlaster();
+    blaster.group.getWorldPosition(this.aimOrigin);
+    blaster.group.getWorldQuaternion(this.aimQuat);
+    this.aimDir.set(0, 0, -1).applyQuaternion(this.aimQuat).normalize();
+    this.aimRaycaster.set(this.aimOrigin, this.aimDir);
+
+    let best: TargetObject | null = null;
+    let bestDistance = Infinity;
+    for (const t of this.activeTargets) {
+      if (t.isHit) continue;
+      this.aimMeshes.length = 0;
+      t.mesh.traverse(this.collectAimMesh);
+      this.aimHits.length = 0;
+      this.aimRaycaster.intersectObjects(this.aimMeshes, false, this.aimHits);
+      const hit = this.aimHits[0];
+      if (hit && hit.distance < bestDistance) {
+        bestDistance = hit.distance;
+        best = t;
+        this.aimPoint.copy(hit.point);
+      }
+    }
+    this.aimMeshes.length = 0;
+    this.aimHits.length = 0;
+    if (!best) {
+      this.aimPoint.copy(this.aimOrigin).addScaledVector(this.aimDir, 30);
+    }
+
+    this.aimPoint.project(this.camera);
+    if (this.aimPoint.z > 1) return false;
+    out.x = (this.aimPoint.x + 1) * 0.5 * this.container.clientWidth;
+    out.y = (1 - this.aimPoint.y) * 0.5 * this.container.clientHeight;
+    out.locked = best !== null;
+    out.points = best ? best.points : 0;
+    return true;
+  }
+
   public dispose() {
     this.disposed = true;
+    // 소리 관리자는 앱 전체가 함께 쓰므로 시연 중 꺼 둔 소리를 되살려 둠
+    this.setDemoActive(false);
     if (this.pendingStartTimer) {
       clearTimeout(this.pendingStartTimer);
       this.pendingStartTimer = null;

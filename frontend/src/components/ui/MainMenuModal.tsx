@@ -1,30 +1,46 @@
 'use client';
 
 import React, { useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Bot,
+  Crosshair,
+  GraduationCap,
+  Headset,
+  Info,
+  MousePointerClick,
+  RotateCcw,
+  Settings,
+  Swords,
+  Trophy,
+  TriangleAlert,
+  Tv,
+  Users,
+  Zap,
+} from 'lucide-react';
 import { ThemeType, TargetShape, Difficulty, ClientRole, ConnectionIssue } from '@/types';
 import {
-  Activity,
-  Sliders,
-  Tv,
-  Play,
-  Headset,
-  Trophy,
-  BookOpen,
-  Check,
-  Shield,
-  Target,
-  Zap,
-  RotateCcw,
-  Sparkles,
-  ArrowRight,
-  ArrowLeft,
-  Swords,
-  Radio,
-  GraduationCap,
-  Flame,
-} from 'lucide-react';
+  DIFFICULTY_HINT,
+  DIFFICULTY_NAME,
+  KEYWORDS_1PT,
+  KEYWORDS_2PT,
+  ROLE_NAME,
+  ROLE_SHORT,
+  SHAPE_NAME,
+  THEME_NAME,
+} from '@/constants/labels';
+import { Button, ButtonLink, Kbd, Panel, Pill, Segmented, Stat, cx } from '@/components/ui/kit';
+import { Logo } from '@/components/ui/hud/broadcast/Logo';
 
 export type MenuStep = 'welcome' | 'intro' | 'guide';
+
+const STEPS: { id: MenuStep; label: string }[] = [
+  { id: 'welcome', label: '게임 소개' },
+  { id: 'intro', label: '대결 규칙' },
+  { id: 'guide', label: '조작 방법' },
+];
 
 interface MainMenuModalProps {
   isOpen: boolean;
@@ -40,11 +56,16 @@ interface MainMenuModalProps {
   highScore: number;
   clientRole?: ClientRole;
   versusMode?: 'VERSUS_PVP' | 'VERSUS_AI';
+  isP1Connected?: boolean;
   isP2Connected?: boolean;
   /** 역할 자리 관련 연결 문제 (다른 기기가 사용 중 등) */
   connectionIssue?: ConnectionIssue | null;
 }
 
+/**
+ * 메인 메뉴(로비): 3단계 안내(게임 소개 → 대결 규칙 → 조작 방법)와
+ * 어느 단계에서나 누를 수 있는 시작 버튼(VR · PC · 관전)
+ */
 export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   isOpen,
   onStart,
@@ -59,522 +80,379 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   highScore,
   clientRole = 'P1',
   versusMode = 'VERSUS_AI',
+  isP1Connected = false,
   isP2Connected = false,
   connectionIssue = null,
 }) => {
-  const [currentStep, setCurrentStep] = useState<MenuStep>('welcome');
+  const [step, setStep] = useState<MenuStep>('welcome');
 
   if (!isOpen) return null;
 
-  const getThemeKorean = (t: ThemeType) => {
-    switch (t) {
-      case 'cyber': return '사이버 미래 도시';
-      case 'space': return '심우주 은하계';
-      case 'city': return '네온 메트로폴리스';
-      default: return t;
-    }
-  };
-
-  const getShapeKorean = (s: TargetShape) => {
-    switch (s) {
-      case 'drone': return '전술 비행 드론';
-      case 'sphere': return '에너지 코어 구체';
-      case 'cube': return '네온 큐브 블록';
-      case 'disc': return '초고속 비행 디스크';
-      default: return s;
-    }
-  };
-
-  const getRoleKorean = (r: ClientRole) => {
-    switch (r) {
-      case 'P1': return '선수 1 (1P 청록)';
-      case 'P2': return '선수 2 (2P 핑크)';
-      case 'SPECTATOR': return '방송 관람객';
-      default: return r;
-    }
-  };
-
-  const isPvPReady = versusMode === 'VERSUS_PVP' || isP2Connected;
+  const stepIndex = STEPS.findIndex((s) => s.id === step);
+  const next = STEPS[stepIndex + 1];
+  const prev = STEPS[stepIndex - 1];
+  const isSpectator = clientRole === 'SPECTATOR';
+  const mySlot: 1 | 2 = clientRole === 'P2' ? 2 : 1;
+  const rivalConnected = mySlot === 1 ? isP2Connected : isP1Connected;
+  const isPvPReady = versusMode === 'VERSUS_PVP' || rivalConnected;
 
   return (
-    <div className="modal-backdrop" style={{ background: 'radial-gradient(circle at center, rgba(3, 7, 18, 0.88) 0%, rgba(2, 5, 12, 0.96) 100%)', backdropFilter: 'blur(10px)' }}>
-      {/* 메인 콕핏 모달 컨테이너 (고대비 깔끔한 사이버 글래스) */}
-      <div className="relative w-full max-w-5xl mx-auto flex flex-col justify-between min-h-[76vh] max-h-[92vh] p-5 md:p-7 bg-slate-950/85 border border-cyan-500/35 rounded-lg shadow-2xl shadow-cyan-950/50 pointer-events-auto overflow-hidden">
-        
-        {/* =================================================================== */}
-        {/* 1. 상단 글로벌 HUD 헤더 (학교 및 학과 브랜딩 & 스텝 인디케이터) */}
-        {/* =================================================================== */}
-        <header className="w-full flex flex-col gap-3 border-b border-cyan-500/25 pb-3">
-          {/* 최상단 학교 & 학과 공식 타이틀 바 */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {/* 인천전자마이스터고 정보통신과 엠블럼 */}
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded border border-yellow-400/50 bg-yellow-950/40 text-yellow-300 font-bold text-xs sm:text-sm shadow-md shadow-yellow-900/30">
-                <GraduationCap className="w-4 h-4 text-yellow-400" />
-                <span className="tracking-wide text-white">인천전자마이스터고</span>
-                <span className="text-gray-500">|</span>
-                <span className="text-cyan-300 font-extrabold">정보통신과</span>
-              </div>
+    <div className="modal-backdrop z-[100] bg-[radial-gradient(ellipse_at_center,rgb(7_11_20/0.62)_0%,rgb(7_11_20/0.92)_70%)]">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="메인 메뉴"
+        className="relative flex max-h-[min(94vh,960px)] w-full max-w-[1200px] flex-col overflow-hidden rounded-2xl border border-line-strong bg-panel/94 shadow-panel animate-fade-in motion-reduce:animate-none"
+      >
+        <span className="pointer-events-none absolute inset-x-16 top-0 h-px bg-linear-to-r from-transparent via-p1 to-transparent" aria-hidden="true" />
 
-              {/* 시스템 링크 및 역할 배정 */}
-              <div className="flex items-center gap-1.5 font-mono text-cyan-400 px-2 py-0.5 border border-cyan-500/30 rounded bg-cyan-950/30">
-                <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                <span>[{getRoleKorean(clientRole)}]</span>
-              </div>
-
-              {connectionIssue && (
-                <span className="text-red-300 font-bold font-mono text-[11px] px-2 py-0.5 border border-red-500/50 rounded bg-red-950/40">
-                  {connectionIssue === 'slot_busy'
-                    ? '[이 역할은 다른 기기가 사용 중 · 자리가 비면 자동으로 접속합니다]'
-                    : '[같은 역할로 새로 접속되어 연결 해제됨 · 새로고침하세요]'}
-                </span>
-              )}
-
-              {/* 1:1 PvP 매칭 상태 */}
-              <div>
-                {isPvPReady ? (
-                  <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 border border-emerald-500/30 rounded bg-emerald-950/20">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    [1:1 친구 대결 준비완료]
-                  </span>
-                ) : (
-                  <span className="text-amber-400 font-bold flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 border border-amber-500/30 rounded bg-amber-950/20">
-                    <span className="w-2 h-2 rounded-full bg-amber-400" />
-                    [AI 로봇 대결 대기중]
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* 우측 보조 메뉴 */}
-            <div className="flex items-center gap-3 self-end sm:self-auto text-xs font-mono">
-              <a
-                href="/manual.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-400 hover:text-white underline flex items-center gap-1"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>도움말</span>
-              </a>
-              <button
-                onClick={onOpenSettings}
-                className="text-gray-400 hover:text-cyan-300 underline flex items-center gap-1 cursor-pointer"
-              >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>환경설정</span>
-              </button>
-            </div>
+        {/* 머리: 로고 · 학교 · 보조 메뉴 */}
+        <header className="flex items-center justify-between gap-3 border-b border-line px-6 py-3.5 short:py-2">
+          <div className="flex min-w-0 items-center gap-4">
+            <Logo className="text-[24px]" />
+            <span className="hidden h-6 w-px bg-line-strong md:block" aria-hidden="true" />
+            <span className="hidden items-center gap-1.5 truncate text-[14px] font-semibold text-gold md:flex">
+              <GraduationCap className="size-4 shrink-0" aria-hidden="true" />
+              인천전자마이스터고 정보통신과
+            </span>
           </div>
-
-          {/* 3단계 시퀀스 스텝 인디케이터 바 */}
-          <div className="flex items-center justify-center gap-1.5 sm:gap-3 pt-1 text-xs">
-            {/* Step 1 버튼 */}
-            <button
-              onClick={() => setCurrentStep('welcome')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded transition-all cursor-pointer ${
-                currentStep === 'welcome'
-                  ? 'border border-cyan-400 bg-cyan-950/60 text-cyan-300 font-bold shadow-md shadow-cyan-950'
-                  : 'text-gray-400 hover:text-gray-200 border border-transparent'
-              }`}
-            >
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                currentStep === 'welcome' ? 'bg-cyan-400 text-black font-extrabold' : 'bg-slate-800 text-gray-400'
-              }`}>1</span>
-              <span>게임 소개 (Welcome)</span>
-            </button>
-
-            <span className="text-slate-600">➔</span>
-
-            {/* Step 2 버튼 */}
-            <button
-              onClick={() => setCurrentStep('intro')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded transition-all cursor-pointer ${
-                currentStep === 'intro'
-                  ? 'border border-cyan-400 bg-cyan-950/60 text-cyan-300 font-bold shadow-md shadow-cyan-950'
-                  : 'text-gray-400 hover:text-gray-200 border border-transparent'
-              }`}
-            >
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                currentStep === 'intro' ? 'bg-cyan-400 text-black font-extrabold' : 'bg-slate-800 text-gray-400'
-              }`}>2</span>
-              <span>대결 룰 (Intro)</span>
-            </button>
-
-            <span className="text-slate-600">➔</span>
-
-            {/* Step 3 버튼 */}
-            <button
-              onClick={() => setCurrentStep('guide')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded transition-all cursor-pointer ${
-                currentStep === 'guide'
-                  ? 'border border-cyan-400 bg-cyan-950/60 text-cyan-300 font-bold shadow-md shadow-cyan-950'
-                  : 'text-gray-400 hover:text-gray-200 border border-transparent'
-              }`}
-            >
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                currentStep === 'guide' ? 'bg-cyan-400 text-black font-extrabold' : 'bg-slate-800 text-gray-400'
-              }`}>3</span>
-              <span>조작법 & 출격 (Guide)</span>
-            </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <ButtonLink href="/manual.html" target="_blank" rel="noopener noreferrer" variant="ghost" size="sm" icon={BookOpen}>
+              도움말
+            </ButtonLink>
+            {onOpenLeaderboard && (
+              <Button variant="ghost" size="sm" icon={Trophy} onClick={onOpenLeaderboard}>
+                순위표
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" icon={Settings} onClick={onOpenSettings}>
+              환경설정
+            </Button>
           </div>
         </header>
 
-        {/* =================================================================== */}
-        {/* 2. 본문 영역: 현재 스텝에 따른 단일 클린 뷰 */}
-        {/* =================================================================== */}
-        <div className="my-auto py-4 flex-1 flex flex-col justify-center">
+        {connectionIssue && (
+          <div role="alert" className="flex items-center gap-2.5 border-b border-danger/40 bg-danger/12 px-6 py-2.5 text-[15px] font-semibold text-[#fecaca]">
+            <TriangleAlert className="size-5 shrink-0 text-danger" aria-hidden="true" />
+            {connectionIssue === 'slot_busy'
+              ? '이 역할은 다른 기기가 사용 중 · 자리가 비면 자동으로 접속합니다'
+              : '같은 역할로 새로 접속되어 연결 해제됨 · 새로고침하세요'}
+          </div>
+        )}
 
-          {/* ----------------------------------------------------------------- */}
-          {/* [1단계: Welcome 화면] 중학생 맞춤형 한글 메인 타이틀 & 환영 화면 */}
-          {/* ----------------------------------------------------------------- */}
-          {currentStep === 'welcome' && (
-            <div className="flex flex-col items-center text-center max-w-3xl mx-auto space-y-5 animate-fadeIn">
-              {/* 인천전자마이스터고 정보통신과 대형 네온 엠블럼 배너 */}
-              <div className="inline-flex items-center gap-2.5 px-6 sm:px-8 py-2 rounded-full border-2 border-cyan-400/80 bg-gradient-to-r from-blue-950/90 via-cyan-950/95 to-blue-950/90 shadow-[0_0_28px_rgba(0,240,255,0.45)] animate-pulse">
-                <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400 shrink-0" />
-                <span className="text-base sm:text-lg md:text-xl font-black tracking-wide text-white">
-                  인천전자마이스터고 <span className="text-cyan-300 font-black drop-shadow-[0_0_12px_rgba(0,240,255,0.6)]">정보통신과</span>
-                </span>
-                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400 shrink-0" />
-              </div>
-
-              {/* 중학생 맞춤형 메인 한글 게임 제목 */}
-              <div>
-                <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
-                  <span className="block text-cyan-400 drop-shadow-[0_0_24px_rgba(0,240,255,0.45)]">
-                    사이버 스트라이크
-                  </span>
-                  <span className="block text-xl sm:text-2xl md:text-3xl text-gray-100 font-extrabold mt-1">
-                    신나는 1:1 VR 미래 사격 배틀!
-                  </span>
-                </h1>
-                <p className="text-sm md:text-base text-cyan-200/90 mt-2 font-medium">
-                  친구와 함께 Meta Quest 2를 쓰고 즐기는 60초 레이저 사격 줄다리기 배틀
-                </p>
-              </div>
-
-              {/* 3대 특징 쉬운 안내 카드 */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full text-left text-xs">
-                <div className="p-3 rounded border border-cyan-500/30 bg-slate-900/60">
-                  <div className="flex items-center gap-1.5 text-cyan-300 font-bold mb-1">
-                    <Target className="w-4 h-4 text-cyan-400" />
-                    <span>내 손 그대로 조준!</span>
-                  </div>
-                  <p className="text-gray-300 text-[11px] leading-relaxed">
-                    VR 컨트롤러를 들고 자유롭게 겨누며 움직이는 드론을 격파하세요!
-                  </p>
-                </div>
-
-                <div className="p-3 rounded border border-yellow-500/30 bg-slate-900/60">
-                  <div className="flex items-center gap-1.5 text-yellow-300 font-bold mb-1">
-                    <Flame className="w-4 h-4 text-yellow-400" />
-                    <span>실시간 점수 줄다리기!</span>
-                  </div>
-                  <p className="text-gray-300 text-[11px] leading-relaxed">
-                    친구보다 표적을 먼저 맞추면 상단 점수 게이지가 우리 팀 쪽으로 이동!
-                  </p>
-                </div>
-
-                <div className="p-3 rounded border border-pink-500/30 bg-slate-900/60">
-                  <div className="flex items-center gap-1.5 text-pink-300 font-bold mb-1">
-                    <Shield className="w-4 h-4 text-pink-400" />
-                    <span>혼자 와도 AI 대결!</span>
-                  </div>
-                  <p className="text-gray-300 text-[11px] leading-relaxed">
-                    친구가 없어도 똑똑한 인공지능 로봇이 상대해 주니 걱정 끝!
-                  </p>
-                </div>
-              </div>
-
-              {/* 매칭 상태 안내 배너 */}
-              <div className={`w-full p-3 rounded border text-left text-xs ${
-                isPvPReady
-                  ? 'border-emerald-500/50 bg-emerald-950/30 text-emerald-300'
-                  : 'border-cyan-500/40 bg-cyan-950/20 text-cyan-200'
-              }`}>
-                <div className="flex items-center justify-between font-bold text-xs">
-                  <span className="flex items-center gap-1.5">
-                    <Swords className="w-4 h-4 text-cyan-400" />
-                    <span>경기장 대결 모드:</span>
-                  </span>
-                  <span className={isPvPReady ? 'text-emerald-400' : 'text-amber-300'}>
-                    {isPvPReady ? '● 2인 플레이어 준비 완료 (친구와 1:1 대결 시작!)' : '○ 1인 플레이 (Cyber AI 로봇과 대결)'}
-                  </span>
-                </div>
-              </div>
-
-              {/* 하단 진행 버튼 */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 w-full justify-center pt-1">
-                <button
-                  onClick={() => setCurrentStep('intro')}
-                  className="w-full sm:w-auto px-8 py-3 rounded border border-cyan-400 bg-cyan-500/25 hover:bg-cyan-500/35 text-white font-bold text-sm tracking-wide flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-950"
-                >
-                  <span>게임 대결 룰 보러가기</span>
-                  <ArrowRight className="w-4 h-4 text-cyan-300" />
-                </button>
-                <button
-                  onClick={() => setCurrentStep('guide')}
-                  className="w-full sm:w-auto px-6 py-3 rounded border border-slate-700 bg-slate-900/50 hover:bg-slate-800 text-gray-300 text-xs flex items-center justify-center gap-1.5 cursor-pointer font-mono"
-                >
-                  <span>조작법 확인 & 바로 출격</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ----------------------------------------------------------------- */}
-          {/* [2단계: 인트로 화면] 중학생 눈높이에 맞춘 대결 룰 & AI 설정 */}
-          {/* ----------------------------------------------------------------- */}
-          {currentStep === 'intro' && (
-            <div className="flex flex-col max-w-4xl mx-auto space-y-4 animate-fadeIn">
-              <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
-                <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
-                  <Target className="w-4 h-4" />
-                  <span>{'// 02. 게임 대결 룰 & 점수 줄다리기 안내'}</span>
-                </div>
-                <span className="text-gray-400 text-xs font-mono">인천전자마이스터고 정보통신과</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                {/* 브리핑 카드 1: 대결 규칙 */}
-                <div className="p-4 rounded border border-cyan-500/30 bg-slate-950/70 flex flex-col justify-between gap-3">
-                  <div className="space-y-2.5">
-                    <div className="text-cyan-300 font-bold text-sm flex items-center gap-1.5">
-                      <Swords className="w-4 h-4 text-cyan-400" />
-                      <span>1:1 점수 줄다리기 배틀 룰</span>
-                    </div>
-                    <ul className="space-y-2 text-gray-300 leading-relaxed text-[11.5px] list-disc list-inside">
-                      <li><b>경기 시간:</b> 정확히 <b>60초 동안</b> 날아다니는 표적을 맞히는 타임어택 경기입니다.</li>
-                      <li><b>선착순 타겟 격파:</b> 같은 표적을 친구보다 <b>먼저 맞춘 사람만 점수</b>를 얻습니다!</li>
-                      <li><b>점수 줄다리기 HUD:</b> 점수에 따라 실시간으로 상단 게이지가 움직여 승패가 한눈에 보입니다.</li>
-                    </ul>
-
-                    {/* 표적 6대 키워드 차등 배점 가이드 박스 */}
-                    <div className="mt-2.5 p-2.5 rounded bg-slate-900/85 border border-cyan-500/40 space-y-1.5">
-                      <div className="font-bold text-xs text-yellow-300 flex items-center justify-between">
-                        <span>🎯 표적 6대 키워드 & 차등 배점 룰</span>
-                        <span className="text-[10px] text-cyan-300 font-mono">정보통신과 핵심전공</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-[11px]">
-                        <div className="p-1.5 rounded bg-cyan-950/70 border border-cyan-400 text-cyan-200">
-                          <div className="font-extrabold text-yellow-300 text-xs flex items-center justify-between">
-                            <span>★ 2점 표적</span>
-                            <span className="text-[10px] text-cyan-300">보너스!</span>
-                          </div>
-                          <div className="text-white font-black text-sm mt-0.5">정보 • 통신</div>
-                        </div>
-                        <div className="p-1.5 rounded bg-slate-900/70 border border-slate-700 text-gray-300">
-                          <div className="font-bold text-gray-400 text-xs flex items-center justify-between">
-                            <span>● 1점 표적</span>
-                            <span className="text-[10px] text-gray-400">기본</span>
-                          </div>
-                          <div className="text-white font-bold text-xs mt-0.5">제어 • 회로 • 인공 • 전자</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-2 border border-slate-800 bg-slate-900/50 text-[10px] text-gray-400 font-mono">
-                    전장 환경: [{getThemeKorean(currentTheme)}] • 표적: [{getShapeKorean(currentShape)}]
-                  </div>
-                </div>
-
-                {/* 브리핑 카드 2: AI 난이도 & 매칭 상태 */}
-                <div className="p-4 rounded border border-cyan-500/30 bg-slate-950/70 flex flex-col justify-between gap-3">
-                  <div className="space-y-2">
-                    <div className="text-pink-400 font-bold text-sm flex items-center gap-1.5">
-                      <Shield className="w-4 h-4 text-pink-400" />
-                      <span>혼자 플레이 시 AI 로봇 난이도 선택</span>
-                    </div>
-                    <p className="text-gray-300 text-[11px] leading-relaxed">
-                      친구가 아직 안 들어왔을 때 대결할 인공지능 로봇의 실력을 골라보세요:
-                    </p>
-                    <div className="space-y-1.5 pt-1">
-                      {(['easy', 'normal', 'hard'] as Difficulty[]).map((diff) => {
-                        const isSelected = currentDifficulty === diff;
-                        const data = {
-                          easy: { title: '1단계 // 초보 모드 (입문)', desc: '반응 느림 • 조준이 조금 흔들려 쉽게 이길 수 있어요' },
-                          normal: { title: '2단계 // 일반 모드 (추천)', desc: '적당한 실력 • 사람과 가장 비슷한 추천 밸런스' },
-                          hard: { title: '3단계 // 고수 모드 (달인)', desc: '엄청난 반응 속도 • 프로 사격 봇에게 도전해보세요!' },
-                        }[diff];
-                        return (
-                          <button
-                            key={diff}
-                            onClick={() => onSelectDifficulty?.(diff)}
-                            className={`w-full text-left p-2 rounded border text-[11px] transition-all cursor-pointer flex justify-between items-center ${
-                              isSelected
-                                ? 'border-cyan-400 bg-cyan-950/50 text-white font-bold'
-                                : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
-                            }`}
-                          >
-                            <div>
-                              <span>{data.title}</span>
-                              <div className="text-[10px] text-gray-400">{data.desc}</div>
-                            </div>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-cyan-400" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 하단 진행 버튼 */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-                <button
-                  onClick={() => setCurrentStep('welcome')}
-                  className="px-4 py-2 rounded border border-slate-700 text-gray-300 hover:text-white text-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>이전: 게임 소개</span>
-                </button>
-                <button
-                  onClick={() => setCurrentStep('guide')}
-                  className="px-6 py-2.5 rounded border border-cyan-400 bg-cyan-500/25 hover:bg-cyan-500/35 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-950"
-                >
-                  <span>조작법 확인 & 출격 준비 ➔</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ----------------------------------------------------------------- */}
-          {/* [3단계: 게임 안내 화면] 중학생 친화적 3대 조작법 & 최종 출격 */}
-          {/* ----------------------------------------------------------------- */}
-          {currentStep === 'guide' && (
-            <div className="flex flex-col max-w-4xl mx-auto space-y-4 animate-fadeIn">
-              <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
-                <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
-                  <Zap className="w-4 h-4" />
-                  <span>{'// 03. 조작 방법 & 신나는 VR 배틀 출격!'}</span>
-                </div>
-                <div className="text-yellow-400 text-xs flex items-center gap-1 font-mono">
-                  <Trophy className="w-3.5 h-3.5" />
-                  <span>최고 기록: {highScore > 0 ? `${highScore.toLocaleString()} PTS` : '기록 없음'}</span>
-                </div>
-              </div>
-
-              {/* 3대 쉬운 조작법 카드 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                <div className="p-3.5 rounded border border-cyan-500/30 bg-slate-950/70 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 text-cyan-300 font-bold text-sm mb-1.5">
-                      <Headset className="w-4 h-4 text-cyan-400" />
-                      <span>1. 시선과 손으로 조준!</span>
-                    </div>
-                    <p className="text-gray-300 text-[11.5px] leading-relaxed">
-                      VR 헤드셋으로 목표를 바라보고, 오른손 컨트롤러를 들어 올려 레이저 조준선을 표적에 맞춥니다.
-                    </p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-slate-800 text-[10px] text-cyan-400 font-bold font-mono">
-                    Quest 2 컨트롤러 / PC 마우스
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded border border-yellow-500/30 bg-slate-950/70 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 text-yellow-300 font-bold text-sm mb-1.5">
-                      <Zap className="w-4 h-4 text-yellow-400" />
-                      <span>2. 방아쇠로 레이저 발사!</span>
-                    </div>
-                    <p className="text-gray-300 text-[11.5px] leading-relaxed">
-                      검지 손가락으로 <b>트리거(방아쇠)</b>를 당기면 펄스 레이저가 발사됩니다! 친구보다 먼저 맞추세요.
-                    </p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-slate-800 text-[10px] text-yellow-400 font-bold font-mono">
-                    트리거(방아쇠) / 스페이스바
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded border border-green-500/30 bg-slate-950/70 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 text-green-300 font-bold text-sm mb-1.5">
-                      <RotateCcw className="w-4 h-4 text-green-400" />
-                      <span>3. 손잡이 쥐어 재장전!</span>
-                    </div>
-                    <p className="text-gray-300 text-[11.5px] leading-relaxed">
-                      총알 10발을 다 쏘면 <b>옆면 손잡이(그립) 버튼</b>을 꾹 쥐어 탄약을 즉시 재장전합니다!
-                    </p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-slate-800 text-[10px] text-green-400 font-bold font-mono">
-                    그립(옆면 버튼) / R 키
-                  </div>
-                </div>
-              </div>
-
-              {/* 출격 알림 배너 */}
-              <div className="p-3 rounded border border-cyan-500/30 bg-cyan-950/25 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2 text-gray-200">
-                  <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
-                  <span>출격 준비 완료! 아래 <b>[Quest 2 VR 배틀 출격]</b> 버튼을 누르면 시작됩니다. (체험 후 <b>그립/메뉴 버튼</b>으로 VR 종료 가능)</span>
-                </div>
-                {onOpenLeaderboard && (
-                  <button
-                    onClick={onOpenLeaderboard}
-                    className="text-cyan-400 hover:text-cyan-300 underline cursor-pointer shrink-0"
-                  >
-                    순위표 보기
-                  </button>
+        {/* 상태 · 단계 탭 */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-ink/30 px-6 py-3 short:py-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Pill tone={isSpectator ? 'gold' : mySlot === 1 ? 'p1' : 'p2'} size="lg">
+              <span className="font-num font-bold">{ROLE_SHORT[clientRole]}</span>
+              <span className="ml-1.5 text-fg">{ROLE_NAME[clientRole]}</span>
+            </Pill>
+            {!isSpectator &&
+              (isPvPReady ? (
+                <Pill tone="ok" icon={Users} size="lg">
+                  친구와 1:1 대결 준비 완료
+                </Pill>
+              ) : (
+                <Pill tone="ai" icon={Bot} size="lg">
+                  AI 라이벌과 대결 · {DIFFICULTY_NAME[currentDifficulty]}
+                </Pill>
+              ))}
+          </div>
+          <div role="tablist" aria-label="안내 단계" className="hud-interactive flex items-center gap-1 rounded-xl border border-line bg-ink/55 p-1">
+            {STEPS.map((s, i) => (
+              <button
+                key={s.id}
+                type="button"
+                role="tab"
+                aria-selected={step === s.id}
+                onClick={(e) => {
+                  setStep(s.id);
+                  if (e.detail > 0) e.currentTarget.blur();
+                }}
+                className={cx(
+                  'flex h-9 cursor-pointer items-center gap-2 rounded-lg px-3 text-[14px] font-semibold transition-colors',
+                  step === s.id ? 'bg-raised text-fg ring-1 ring-p1/70' : 'text-fg-2 hover:bg-white/6 hover:text-fg'
                 )}
-              </div>
-
-              {/* 최종 출격 버튼 그룹 */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-800">
-                <button
-                  onClick={() => setCurrentStep('intro')}
-                  className="px-4 py-2 rounded border border-slate-700 text-gray-300 hover:text-white text-xs flex items-center gap-1.5 cursor-pointer order-2 sm:order-1"
+              >
+                <span
+                  className={cx(
+                    'flex size-5 items-center justify-center rounded-full font-num text-[13px] font-bold',
+                    step === s.id ? 'bg-p1 text-ink' : 'bg-white/10 text-fg-2'
+                  )}
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>이전: 대결 룰</span>
-                </button>
-
-                <div className="flex items-center gap-2.5 w-full sm:w-auto order-1 sm:order-2">
-                  <button
-                    onClick={onJoinAsSpectator}
-                    className="px-3.5 py-2.5 rounded border border-amber-500/40 text-amber-300 hover:border-amber-400 text-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Tv className="w-3.5 h-3.5 text-amber-400" />
-                    <span>친구 경기 관람하기</span>
-                  </button>
-
-                  <button
-                    onClick={onStart}
-                    className="px-4 py-2.5 rounded border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>PC 연습 시작</span>
-                  </button>
-
-                  <button
-                    onClick={onEnterVR}
-                    className="px-6 py-2.5 rounded border border-cyan-400 bg-cyan-500/30 hover:bg-cyan-500/40 text-white font-extrabold text-xs md:text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/30"
-                  >
-                    <Headset className="w-4 h-4 text-cyan-300" />
-                    <span>Quest 2 VR 배틀 출격!</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
+                  {i + 1}
+                </span>
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* =================================================================== */}
-        {/* 3. 하단 테크 풋터 바 (학교명 & 학과명 명시) */}
-        {/* =================================================================== */}
-        <footer className="w-full pt-2 border-t border-cyan-500/20 flex flex-col sm:flex-row items-center justify-between text-[11px] text-gray-400 gap-1">
-          <div className="flex items-center gap-2 text-cyan-300 font-medium">
-            <span>인천전자마이스터고등학교 정보통신과</span>
-            <span className="text-gray-600">|</span>
-            <span className="font-mono text-gray-400">WebXR 6DoF IoT 전술 시뮬레이터</span>
+        {/* 본문 */}
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-6 short:py-4">
+          {step === 'welcome' && (
+            <WelcomeStep
+              mySlot={mySlot}
+              isSpectator={isSpectator}
+              rivalConnected={rivalConnected}
+              isPvPReady={isPvPReady}
+              highScore={highScore}
+              difficulty={currentDifficulty}
+              theme={currentTheme}
+              shape={currentShape}
+            />
+          )}
+          {step === 'intro' && <RulesStep difficulty={currentDifficulty} onSelectDifficulty={onSelectDifficulty} />}
+          {step === 'guide' && <ControlsStep />}
+        </div>
+
+        {/* 아래: 단계 이동 · 시작 버튼 */}
+        <footer className="flex flex-wrap items-center gap-3 border-t border-line bg-ink/50 px-6 py-4 short:py-2.5">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" icon={ArrowLeft} disabled={!prev} onClick={() => prev && setStep(prev.id)} aria-label="이전 단계">
+              이전
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!next}
+              onClick={() => next && setStep(next.id)}
+              trailing={<ArrowRight className="size-[18px]" aria-hidden="true" />}
+              aria-label="다음 단계"
+            >
+              {next ? `다음: ${next.label}` : '마지막 단계'}
+            </Button>
           </div>
-          <div className="font-mono text-gray-500 text-[10px]">
-            CYBER STRIKE ARENA v2.06
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {isSpectator ? (
+              <Button variant="primary" size="xl" icon={Tv} onClick={onJoinAsSpectator}>
+                관전 화면 시작
+              </Button>
+            ) : (
+              <>
+                {onJoinAsSpectator && (
+                  <Button variant="ghost" icon={Tv} onClick={onJoinAsSpectator} title="이 기기를 관전(TV 중계) 화면으로 바꿔요">
+                    관전 화면으로
+                  </Button>
+                )}
+                <Button variant="secondary" size="lg" icon={MousePointerClick} onClick={onStart} title="마우스와 키보드로 플레이">
+                  PC로 플레이
+                </Button>
+                <Button variant="vr" size="xl" icon={Headset} onClick={onEnterVR}>
+                  VR 배틀 시작
+                </Button>
+              </>
+            )}
           </div>
         </footer>
-
-      </div>
+      </section>
     </div>
   );
 };
+
+function Feature({ icon: Icon, title, desc, tone }: { icon: typeof Crosshair; title: string; desc: string; tone: 'p1' | 'p2' | 'gold' }) {
+  const color = tone === 'p1' ? 'text-p1' : tone === 'p2' ? 'text-p2' : 'text-gold';
+  return (
+    <li className="rounded-xl border border-line bg-ink/40 p-4 short:p-3">
+      <Icon className={cx('size-7 short:size-6', color)} strokeWidth={1.8} aria-hidden="true" />
+      <p className="mt-3 text-[17px] font-bold text-fg short:mt-2">{title}</p>
+      <p className="mt-1 text-[14px] leading-relaxed text-fg-2">{desc}</p>
+    </li>
+  );
+}
+
+function SlotLine({ slot, label, state }: { slot: 1 | 2; label: string; state: 'me' | 'ready' | 'ai' }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-line bg-ink/40 px-3 py-2.5">
+      <span className={cx('h-7 w-1 rounded-full', slot === 1 ? 'bg-p1' : 'bg-p2')} aria-hidden="true" />
+      <span className={cx('font-num text-[18px] font-bold', slot === 1 ? 'text-p1' : 'text-p2')}>{slot}P</span>
+      <span className="truncate text-[15px] font-semibold text-fg">{label}</span>
+      <span className="ml-auto">
+        {state === 'me' ? (
+          <Pill tone="neutral" size="sm">
+            이 기기
+          </Pill>
+        ) : state === 'ready' ? (
+          <Pill tone="ok" dot size="sm">
+            준비 완료
+          </Pill>
+        ) : (
+          <Pill tone="ai" icon={Bot} size="sm">
+            AI가 맡아요
+          </Pill>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function WelcomeStep({
+  mySlot,
+  isSpectator,
+  rivalConnected,
+  isPvPReady,
+  highScore,
+  difficulty,
+  theme,
+  shape,
+}: {
+  mySlot: 1 | 2;
+  isSpectator: boolean;
+  rivalConnected: boolean;
+  isPvPReady: boolean;
+  highScore: number;
+  difficulty: Difficulty;
+  theme: ThemeType;
+  shape: TargetShape;
+}) {
+  const rivalSlot: 1 | 2 = mySlot === 1 ? 2 : 1;
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <div>
+        <p className="text-[15px] font-semibold text-p1">WebXR 1:1 VR 사격 배틀</p>
+        <h1 className="mt-2 text-[40px] font-black leading-[1.1] tracking-tight text-fg md:text-[52px] short:mt-1 short:text-[34px]">사이버 스트라이크</h1>
+        <p className="mt-3 text-[18px] font-medium leading-relaxed text-fg-2 md:text-[20px] short:mt-1.5 short:text-[16px]">
+          친구와 함께 Meta Quest 2를 쓰고 즐기는 60초 레이저 사격 대결
+        </p>
+        <ul className="mt-6 grid gap-3 sm:grid-cols-3 short:mt-4">
+          <Feature icon={Crosshair} tone="p1" title="내 손으로 조준" desc="컨트롤러를 겨누는 곳으로 레이저가 나가요" />
+          <Feature icon={Swords} tone="gold" title="점수 줄다리기" desc="같은 표적은 먼저 맞힌 사람이 점수를 가져가요" />
+          <Feature icon={Bot} tone="p2" title="혼자 와도 OK" desc="친구가 없으면 AI 라이벌이 상대해 줘요" />
+        </ul>
+      </div>
+      <Panel solid className="p-5">
+        <p className="text-[13px] font-bold tracking-wide text-fg-3">이번 경기</p>
+        {isSpectator ? (
+          <p className="mt-3 text-[15px] leading-relaxed text-fg-2">
+            이 기기는 관전 화면이에요. 아래 <b className="text-fg">관전 화면 시작</b>을 누르면 TV 중계 화면으로 바뀌어요.
+          </p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-2">
+            <SlotLine slot={1} label={mySlot === 1 || rivalConnected ? ROLE_NAME.P1 : 'AI 라이벌'} state={mySlot === 1 ? 'me' : rivalConnected ? 'ready' : 'ai'} />
+            <SlotLine slot={2} label={mySlot === 2 || rivalConnected ? ROLE_NAME.P2 : 'AI 라이벌'} state={mySlot === 2 ? 'me' : rivalConnected ? 'ready' : 'ai'} />
+          </div>
+        )}
+        {!isSpectator && (
+          <p className="mt-3 text-[13px] leading-relaxed text-fg-3">
+            {isPvPReady
+              ? '두 사람 모두 준비됐어요. 누구든 시작하면 함께 경기가 시작돼요.'
+              : `${rivalSlot}P 자리가 비어 있어 AI 라이벌과 대결해요. 친구가 접속하면 1:1 대결로 바뀌어요.`}
+          </p>
+        )}
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-4">
+          <Stat label="이 기기 최고 기록" value={highScore > 0 ? highScore : '-'} unit={highScore > 0 ? '점' : undefined} valueClassName="text-gold" />
+          <Stat label="난이도" value={DIFFICULTY_NAME[difficulty]} numeric={false} />
+        </div>
+        <p className="mt-4 text-[13px] text-fg-3">
+          경기장 {THEME_NAME[theme]} · 표적 {SHAPE_NAME[shape]}
+        </p>
+      </Panel>
+    </div>
+  );
+}
+
+function RulesStep({ difficulty, onSelectDifficulty }: { difficulty: Difficulty; onSelectDifficulty?: (d: Difficulty) => void }) {
+  const rules = [
+    { title: '60초 타임어택', desc: '날아다니는 드론 표적을 60초 동안 맞혀요' },
+    { title: '먼저 맞힌 사람이 점수', desc: '같은 표적은 먼저 맞힌 사람만 점수를 얻어요' },
+    { title: '점수 줄다리기', desc: '화면 위 막대가 앞선 사람 쪽으로 밀려요. 끝났을 때 점수가 높으면 승리!' },
+  ];
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <Panel solid className="p-5">
+        <p className="text-[13px] font-bold tracking-wide text-fg-3">대결 규칙</p>
+        <ol className="mt-3 flex flex-col gap-3">
+          {rules.map((r, i) => (
+            <li key={r.title} className="flex gap-3">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-p1/15 font-num text-[15px] font-bold text-p1">{i + 1}</span>
+              <span>
+                <span className="block text-[16px] font-bold text-fg">{r.title}</span>
+                <span className="block text-[14px] leading-relaxed text-fg-2">{r.desc}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+        <div className="mt-5 rounded-xl border border-gold/35 bg-gold/6 p-4">
+          <p className="text-[14px] font-bold text-gold">표적 점수 · 정보통신과 핵심 단어</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-gold px-2 py-0.5 font-num text-[15px] font-bold text-ink">2점</span>
+            {KEYWORDS_2PT.map((k) => (
+              <span key={k} className="rounded-md border border-gold/60 bg-gold/12 px-2.5 py-0.5 text-[17px] font-extrabold text-gold">
+                {k}
+              </span>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-raised px-2 py-0.5 font-num text-[15px] font-bold text-fg">1점</span>
+            {KEYWORDS_1PT.map((k) => (
+              <span key={k} className="rounded-md border border-line-strong bg-ink/50 px-2.5 py-0.5 text-[17px] font-bold text-fg">
+                {k}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Panel>
+      <Panel solid className="p-5">
+        <p className="text-[13px] font-bold tracking-wide text-fg-3">난이도</p>
+        <p className="mt-2 text-[14px] leading-relaxed text-fg-2">표적의 속도·크기와 AI 라이벌의 실력이 함께 바뀌어요.</p>
+        <Segmented
+          vertical
+          label="난이도"
+          className="mt-3"
+          value={difficulty}
+          onChange={(d) => onSelectDifficulty?.(d)}
+          options={(['easy', 'normal', 'hard'] as Difficulty[]).map((d) => ({ value: d, label: DIFFICULTY_NAME[d], hint: DIFFICULTY_HINT[d] }))}
+        />
+      </Panel>
+    </div>
+  );
+}
+
+function ControlCard({ icon: Icon, title, vr, pc, note }: { icon: typeof Crosshair; title: string; vr: string; pc: string; note?: string }) {
+  return (
+    <Panel solid className="p-5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex size-10 items-center justify-center rounded-lg bg-p1/12">
+          <Icon className="size-5 text-p1" strokeWidth={2} aria-hidden="true" />
+        </span>
+        <p className="text-[19px] font-bold text-fg">{title}</p>
+      </div>
+      <dl className="mt-4 flex flex-col gap-2.5 text-[14px]">
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-ink/45 px-3 py-2">
+          <dt className="flex items-center gap-1.5 text-fg-3">
+            <Headset className="size-4" aria-hidden="true" />
+            Quest 2
+          </dt>
+          <dd className="text-right font-semibold text-fg">{vr}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-ink/45 px-3 py-2">
+          <dt className="flex items-center gap-1.5 text-fg-3">
+            <MousePointerClick className="size-4" aria-hidden="true" />
+            PC
+          </dt>
+          <dd className="text-right font-semibold text-fg">{pc}</dd>
+        </div>
+      </dl>
+      {note && <p className="mt-3 text-[13px] text-fg-3">{note}</p>}
+    </Panel>
+  );
+}
+
+function ControlsStep() {
+  return (
+    <div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <ControlCard icon={Crosshair} title="조준" vr="컨트롤러로 겨누기" pc="마우스 움직이기" />
+        <ControlCard icon={Zap} title="발사" vr="트리거 (검지 방아쇠)" pc="클릭 · Space" />
+        <ControlCard icon={RotateCcw} title="재장전" vr="그립 (옆면 버튼)" pc="우클릭 · R" note="10발을 다 쏘면 재장전해요" />
+      </div>
+      <p className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-ink/40 px-4 py-3 text-[14px] leading-relaxed text-fg-2">
+        <Info className="size-4 shrink-0 text-p1" aria-hidden="true" />
+        <span>VR에서 나가려면</span>
+        <Kbd>A</Kbd>
+        <span>또는</span>
+        <Kbd>B</Kbd>
+        <span>버튼을 1초 넘게 누르세요. 경기 중이 아니면 한 번만 눌러도 나가요.</span>
+      </p>
+    </div>
+  );
+}

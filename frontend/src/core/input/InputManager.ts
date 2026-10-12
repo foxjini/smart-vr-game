@@ -463,6 +463,10 @@ export class InputManager {
   /** PC 단독 테스트를 위한 키보드 및 마우스 리스너 */
   private initKeyboardMouseListeners() {
     window.addEventListener('keydown', (e) => {
+      // 이름·서버 주소를 입력하는 중에는 C·R·Z·스페이스·WASD를 게임 조작으로 쓰지 않음
+      // (결과창에서 이름을 치다가 다음 경기가 시작되던 문제)
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || target.closest('input, textarea, select'))) return;
       this.keysPressed[e.code] = true;
       this.updateKeyboardStick();
 

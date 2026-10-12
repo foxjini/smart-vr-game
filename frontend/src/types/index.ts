@@ -125,6 +125,9 @@ export interface VersusMatchStats {
   p2Hits: number;
   p2Combo: number;
   p2Accuracy: number;
+  /** 경기 중 최고 연속 명중 (결과 비교용) */
+  p1MaxCombo?: number;
+  p2MaxCombo?: number;
   spectatorCount: number;
   winner?: 'P1' | 'P2' | 'DRAW';
 }

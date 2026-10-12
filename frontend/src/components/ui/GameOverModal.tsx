@@ -1,21 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
-import { GameStats, Difficulty, ThemeType, VersusMatchStats, ClientRole } from '@/types';
+import { ArrowRight, CircleCheck, House, RotateCcw, Settings, Trophy } from 'lucide-react';
+import { GameStats, Difficulty, ThemeType, ClientRole } from '@/types';
 import { LeaderboardManager } from '@/core/leaderboard/LeaderboardManager';
-import {
-  Trophy,
-  RotateCcw,
-  Sliders,
-  Award,
-  Check,
-  Home,
-} from 'lucide-react';
+import { DIFFICULTY_NAME } from '@/constants/labels';
+import { Button, CompareRow, ModalShell, Pill, TeamPlate, cx } from '@/components/ui/kit';
+import { MatchResultSummary, localSlotOf, slotName, winnerBannerText } from '@/components/ui/matchInfo';
 
 interface GameOverModalProps {
-  isOpen: boolean;
+  /** 내 최종 기록 (순위표 등록용) */
   stats: GameStats;
-  versusStats?: VersusMatchStats;
+  /** 두 선수 최종 결과 (모든 화면이 같은 내용) */
+  result: MatchResultSummary;
   clientRole?: ClientRole;
   highScore: number;
   difficulty: Difficulty;
@@ -26,10 +23,10 @@ interface GameOverModalProps {
   onGoToMainMenu?: () => void;
 }
 
+/** 플레이어 결과창: 승패 · 두 선수 기록 비교 · 순위표 등록 · 다시 하기 */
 export const GameOverModal: React.FC<GameOverModalProps> = ({
-  isOpen,
   stats,
-  versusStats,
+  result,
   clientRole = 'P1',
   highScore,
   difficulty,
@@ -43,18 +40,12 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [savedEntryId, setSavedEntryId] = useState<string | undefined>();
 
-  if (!isOpen) return null;
-
+  const mySlot = localSlotOf(clientRole) ?? 1;
+  const winSlot = result.winner === 'P1' ? 1 : result.winner === 'P2' ? 2 : null;
+  const outcome: 'win' | 'lose' | 'draw' = winSlot === null ? 'draw' : winSlot === mySlot ? 'win' : 'lose';
   const isNewRecord = stats.score > 0 && stats.score >= highScore;
   const isTopTen = stats.score > 0 && LeaderboardManager.getInstance().isTopTen(stats.score);
-
-  const p1Score = versusStats ? versusStats.p1Score : stats.score;
-  const p2Score = versusStats ? versusStats.p2Score : 0;
-  const winner = versusStats?.winner || (p1Score > p2Score ? 'P1' : p2Score > p1Score ? 'P2' : 'DRAW');
-
-  const amWinner =
-    (clientRole === 'P1' && winner === 'P1') ||
-    (clientRole === 'P2' && winner === 'P2');
+  const aiLabel = DIFFICULTY_NAME[difficulty];
 
   const handleSubmitScore = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,167 +64,124 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
     setSavedEntryId(newEntry.id);
   };
 
-  const getDifficultyKorean = (diff: Difficulty) => {
-    switch (diff) {
-      case 'easy': return '초보자';
-      case 'normal': return '표준';
-      case 'hard': return '프로';
-      default: return diff;
-    }
-  };
+  const title =
+    outcome === 'win' ? (
+      <span className={mySlot === 1 ? 'text-p1' : 'text-p2'}>승리!</span>
+    ) : outcome === 'draw' ? (
+      <span className="text-gold">무승부</span>
+    ) : (
+      <span className="text-fg">아쉬운 패배</span>
+    );
 
   return (
-    <div className="modal-backdrop">
-      <div className="hud-panel hud-corners p-6 w-full max-w-lg flex flex-col gap-4 items-center text-center border-cyan-500/40 max-h-[95vh] overflow-y-auto">
-        {/* 헤더 */}
-        <div className="flex flex-col gap-1 w-full border-b border-cyan-500/20 pb-3">
-          <div className="text-[10px] uppercase tracking-widest text-cyan-400 font-mono">
-            {'// 경기 결과 분석 // 1:1 대결 종합 평가'}
-          </div>
-          <h2 className="cyber-title text-2xl text-white">교전 결과 브리핑</h2>
-          
-          {/* 승패 배너 */}
-          <div
-            className={`text-xs font-mono font-bold tracking-wider mt-1 px-3 py-1 border inline-flex items-center gap-1.5 justify-center ${
-              amWinner
-                ? 'bg-cyan-950/40 text-cyan-300 border-cyan-400'
-                : winner === 'DRAW'
-                ? 'bg-amber-950/40 text-amber-300 border-amber-400'
-                : 'bg-pink-950/40 text-pink-400 border-pink-500'
-            }`}
-          >
-            <Trophy className="w-3.5 h-3.5" strokeWidth={1.75} />
-            <span>
-              {winner === 'P1'
-                ? '[ 승리 ] 플레이어 1 (시안) 승리!'
-                : winner === 'P2'
-                ? '[ 승리 ] 플레이어 2 (마젠타) 승리!'
-                : '[ 무승부 ] 치열한 접전 무승부'}
-            </span>
-          </div>
-        </div>
-
-        {/* 1:1 대결 스탯 비교 카드 */}
-        <div className="grid grid-cols-2 gap-3 w-full font-mono text-left">
-          {/* P1 스탯 */}
-          <div className="bg-slate-950/30 border border-cyan-500/30 p-3 flex flex-col gap-1">
-            <div className="text-[10px] text-cyan-400 font-bold flex justify-between">
-              <span>플레이어 1 [시안]</span>
-              {winner === 'P1' && <span className="text-yellow-400 font-bold">승자</span>}
-            </div>
-            <div className="text-2xl font-extrabold text-cyan-300">
-              {p1Score.toLocaleString()} <span className="text-xs font-normal text-slate-400">PTS</span>
-            </div>
-            <div className="text-[10px] text-gray-400 flex flex-col gap-0.5 pt-1 border-t border-slate-800">
-              <div>명중 횟수: {versusStats ? versusStats.p1Hits : stats.hits}회</div>
-              <div>최대 콤보: {versusStats ? versusStats.p1Combo : stats.maxCombo}x</div>
-              <div>명중률: {versusStats ? versusStats.p1Accuracy : stats.accuracy}%</div>
-            </div>
-          </div>
-
-          {/* P2 / AI 스탯 */}
-          <div className="bg-slate-950/30 border border-pink-500/30 p-3 flex flex-col gap-1">
-            <div className="text-[10px] text-pink-400 font-bold flex justify-between">
-              <span>
-                {versusStats?.mode === 'VERSUS_PVP'
-                  ? '플레이어 2 [마젠타]'
-                  : `AI 봇 [${getDifficultyKorean(difficulty)}]`}
-              </span>
-              {winner === 'P2' && <span className="text-yellow-400 font-bold">승자</span>}
-            </div>
-            <div className="text-2xl font-extrabold text-pink-300">
-              {p2Score.toLocaleString()} <span className="text-xs font-normal text-slate-400">PTS</span>
-            </div>
-            <div className="text-[10px] text-gray-400 flex flex-col gap-0.5 pt-1 border-t border-slate-800">
-              <div>명중 횟수: {versusStats ? versusStats.p2Hits : 0}회</div>
-              <div>최대 콤보: {versusStats ? versusStats.p2Combo : 0}x</div>
-              <div>명중률: {versusStats ? versusStats.p2Accuracy : 0}%</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 랭킹 등록 폼 */}
-        <div className="w-full bg-slate-950/30 border border-cyan-500/20 p-3 flex flex-col gap-2 font-mono">
-          <div className="flex justify-between items-center text-[10px]">
-            <span className="text-cyan-300 font-bold flex items-center gap-1">
-              <Award className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} />
-              <span>{'// 텔레메트리 로그: 순위표 기록 등록'}</span>
-            </span>
-            <div className="flex items-center gap-1.5">
-              {isNewRecord && (
-                <span className="text-[9px] bg-cyan-400 text-black px-1.5 py-0.2 font-bold">
-                  최고 기록 경신
-                </span>
-              )}
-              {isTopTen && (
-                <span className="text-[9px] bg-amber-400 text-black px-1.5 py-0.2 font-bold">
-                  TOP 10 진입 가능
-                </span>
-              )}
-            </div>
-          </div>
-
-          {!isSubmitted ? (
-            <form onSubmit={handleSubmitScore} className="flex gap-2">
-              <input
-                type="text"
-                maxLength={15}
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                placeholder="호출 부호 입력 (최대 15자)"
-                className="flex-1 bg-slate-950/60 border border-slate-700 px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400 rounded-sm"
-              />
-              <button
-                type="submit"
-                className="hud-btn hud-btn-primary text-xs py-1.5 px-3"
-              >
-                기록 등록
-              </button>
-            </form>
-          ) : (
-            <div className="flex justify-between items-center bg-cyan-950/20 p-1.5 border border-cyan-500/30 text-xs text-cyan-200">
-              <span className="flex items-center gap-1">
-                <Check className="w-3.5 h-3.5 text-cyan-400" strokeWidth={2} />
-                <span>[ 정상 등록 완료 ]</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => onViewLeaderboard(savedEntryId)}
-                className="text-amber-400 hover:text-amber-300 underline font-bold"
-              >
-                순위표 확인 &rarr;
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* 하단 액션 버튼 */}
-        <div className="flex gap-2 w-full pt-1 border-t border-slate-800">
+    <ModalShell
+      layer="result"
+      size="lg"
+      accent={outcome === 'win' ? (mySlot === 1 ? 'p1' : 'p2') : outcome === 'draw' ? 'gold' : 'none'}
+      eyebrow="경기 결과"
+      icon={Trophy}
+      title={title}
+      headerAside={
+        <Pill tone={winSlot === 1 ? 'p1' : winSlot === 2 ? 'p2' : 'gold'} size="lg" className="max-w-[340px]">
+          {winnerBannerText(result.winner, result.aiSlot)}
+        </Pill>
+      }
+      footer={
+        <div className="flex flex-wrap items-center gap-2">
           {onGoToMainMenu && (
-            <button
-              onClick={onGoToMainMenu}
-              className="hud-btn flex-1 py-2 text-xs gap-1.5 border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 text-cyan-300 hover:text-white"
-            >
-              <Home className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} />
-              <span>메인 메뉴</span>
-            </button>
+            <Button icon={House} variant="secondary" onClick={onGoToMainMenu}>
+              메인 메뉴
+            </Button>
           )}
-          <button
-            onClick={onOpenSettings}
-            className="hud-btn flex-1 py-2 text-xs gap-1.5"
-          >
-            <Sliders className="w-3.5 h-3.5 text-gray-400" strokeWidth={1.5} />
-            <span>환경 설정</span>
-          </button>
-          <button
-            onClick={onRestart}
-            className="hud-btn hud-btn-primary flex-1 py-2 text-xs font-bold gap-1.5"
-          >
-            <RotateCcw className="w-3.5 h-3.5" strokeWidth={2} />
-            <span>재경기 시작 &rarr;</span>
-          </button>
+          <Button icon={Settings} variant="ghost" onClick={onOpenSettings}>
+            환경설정
+          </Button>
+          <Button icon={RotateCcw} variant="primary" size="lg" className="ml-auto" onClick={onRestart} trailing={<ArrowRight className="size-5" aria-hidden="true" />}>
+            재경기 시작
+          </Button>
         </div>
+      }
+    >
+      {/* 두 선수 점수 */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
+        <TeamPlate
+          slot={1}
+          size="broadcast"
+          name={slotName(1, result.aiSlot)}
+          score={result.p1Score}
+          isAI={result.aiSlot === 1}
+          aiLabel={aiLabel}
+          isMe={mySlot === 1}
+          isWinner={winSlot === 1}
+          className="rounded-xl border border-line"
+        />
+        <span className="font-display text-[22px] font-bold text-fg-3">VS</span>
+        <TeamPlate
+          slot={2}
+          size="broadcast"
+          name={slotName(2, result.aiSlot)}
+          score={result.p2Score}
+          isAI={result.aiSlot === 2}
+          aiLabel={aiLabel}
+          isMe={mySlot === 2}
+          isWinner={winSlot === 2}
+          className="rounded-xl border border-line"
+        />
       </div>
-    </div>
+
+      {/* 기록 비교 */}
+      <div className="mt-5 flex flex-col gap-3 rounded-xl border border-line bg-ink/40 px-4 py-4">
+        <CompareRow label="명중" left={result.p1Hits} right={result.p2Hits} />
+        <CompareRow label="명중률" left={result.p1Accuracy} right={result.p2Accuracy} unit="%" />
+        <CompareRow label="최고 연속" left={result.p1MaxCombo} right={result.p2MaxCombo} />
+      </div>
+
+      {/* 순위표 등록 */}
+      <div className={cx('mt-5 rounded-xl border px-5 py-4', isSubmitted ? 'border-ok/40 bg-ok/8' : 'border-line-strong bg-raised/60')}>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[16px] font-bold text-fg">순위표에 이름 남기기</p>
+          <span className="text-[14px] text-fg-3">내 점수 {stats.score}점</span>
+          <span className="ml-auto flex gap-1.5">
+            {isNewRecord && (
+              <Pill tone="p1" size="sm">
+                최고 기록!
+              </Pill>
+            )}
+            {isTopTen && (
+              <Pill tone="gold" size="sm">
+                TOP 10 가능
+              </Pill>
+            )}
+          </span>
+        </div>
+
+        {!isSubmitted ? (
+          <form onSubmit={handleSubmitScore} className="mt-3 flex gap-2">
+            <input
+              type="text"
+              maxLength={15}
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
+              placeholder="호출 부호 입력 (최대 15자)"
+              aria-label="순위표에 남길 이름"
+              className="hud-interactive h-12 min-w-0 flex-1 rounded-lg border border-line-strong bg-ink/70 px-4 text-[17px] text-fg outline-none transition-colors placeholder:text-fg-3 focus:border-p1"
+            />
+            <Button type="submit" variant="primary" size="lg">
+              기록 등록
+            </Button>
+          </form>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-[16px] font-semibold text-ok">
+              <CircleCheck className="size-5" aria-hidden="true" />
+              등록 완료! 순위표에 기록됐어요
+            </span>
+            <Button variant="gold" icon={Trophy} onClick={() => onViewLeaderboard(savedEntryId)} trailing={<ArrowRight className="size-4" aria-hidden="true" />}>
+              순위표 확인
+            </Button>
+          </div>
+        )}
+      </div>
+    </ModalShell>
   );
 };

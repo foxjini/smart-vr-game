@@ -1,21 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Check, Mic, Monitor, Settings } from 'lucide-react';
 import { ThemeType, TargetShape, Difficulty, SoundPresetType, ClientRole } from '@/types';
 import { VoiceManager } from '@/core/audio/VoiceManager';
-import { SoundManager } from '@/core/audio/SoundManager';
-import {
-  Sliders,
-  X,
-  Layers,
-  Box,
-  Volume2,
-  Mic,
-  Crosshair,
-  Server,
-  Check,
-  User,
-} from 'lucide-react';
+import { DIFFICULTY_HINT, DIFFICULTY_NAME, ROLE_NAME, SHAPE_NAME, THEME_NAME } from '@/constants/labels';
+import { Button, ModalShell, Segmented, Slider } from '@/components/ui/kit';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -42,6 +32,36 @@ interface SettingsModalProps {
   onSelectRole?: (role: ClientRole) => void;
 }
 
+const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
+const THEMES: ThemeType[] = ['cyber', 'space', 'city'];
+const SHAPES: TargetShape[] = ['drone', 'sphere', 'cube', 'disc'];
+
+const SOUND_OPTIONS: { value: SoundPresetType; label: string; hint: string }[] = [
+  { value: 'laser', label: 'SF 레이저', hint: '미래형 광선 소리' },
+  { value: 'kinetic', label: '실탄', hint: '묵직한 총소리' },
+  { value: 'retro', label: '8비트', hint: '오락실 게임 소리' },
+];
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="border-t border-line pt-5 first:border-t-0 first:pt-0">
+      <h3 className="mb-4 text-[13px] font-bold tracking-wide text-fg-3">{title}</h3>
+      <div className="flex flex-col gap-5">{children}</div>
+    </section>
+  );
+}
+
+function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[14px] font-semibold text-fg">{label}</span>
+      {children}
+      {note && <p className="text-[13px] leading-relaxed text-fg-3">{note}</p>}
+    </div>
+  );
+}
+
+/** 환경설정: 경기 · 소리 · 조작 · 이 기기 */
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -67,300 +87,132 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSelectRole,
 }) => {
   const [hostInput, setHostInput] = useState(serverHost);
+  const [hostSaved, setHostSaved] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSaveHost = () => {
     onUpdateServerHost(hostInput.trim());
+    setHostSaved(true);
   };
 
+  // 고르면 효과음을 한 번 들려줌 (엔진이 소리 설정을 바꾸며 미리 듣기 소리를 냄)
   const handleTestSound = (preset: SoundPresetType) => {
     onSelectSoundPreset(preset);
-    SoundManager.getInstance().setPreset(preset);
-    SoundManager.getInstance().playFire();
-  };
-
-  const handleTestVoice = () => {
-    VoiceManager.getInstance().speak('GAME_START');
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="hud-panel hud-corners p-5 md:p-6 w-full max-w-xl flex flex-col gap-4 border-cyan-500/30 max-h-[92vh] overflow-y-auto">
-        {/* 헤더 */}
-        <div className="flex justify-between items-center border-b border-cyan-500/20 pb-3">
-          <div className="flex flex-col">
-            <span className="text-[10px] text-cyan-400 font-mono tracking-widest flex items-center gap-1.5">
-              <Sliders className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.75} />
-              <span>{'// 시스템 환경 설정'}</span>
-            </span>
-            <h2 className="cyber-title text-xl text-white">사격장 가상 환경 및 오디오 제어</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-cyan-400 transition-colors p-1"
-            title="닫기"
-          >
-            <X className="w-5 h-5" strokeWidth={1.75} />
-          </button>
+    <ModalShell
+      layer="settings"
+      size="lg"
+      accent="p1"
+      eyebrow="환경설정"
+      icon={Settings}
+      title="게임 설정"
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end">
+          <Button variant="primary" size="lg" icon={Check} onClick={onClose}>
+            설정 완료
+          </Button>
         </div>
-
-        {/* 1. 가상 공간 테마 선택 */}
-        <div className="flex flex-col gap-1.5 font-mono text-xs">
-          <div className="text-[11px] text-gray-400 tracking-wider flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} />
-            <span>01 // 경기장 가상 테마 선택</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'cyber', name: '사이버 아레나', desc: '네온 그리드 매트릭스' },
-              { id: 'space', name: '심우주 성운', desc: '우주 배경 및 성운' },
-              { id: 'city', name: '네온 시티', desc: '미래 도시 스카이라인' },
-            ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => onSelectTheme(t.id as ThemeType)}
-                className={`p-2 rounded-sm border text-left transition-all cursor-pointer ${
-                  currentTheme === t.id
-                    ? 'border-cyan-400 bg-cyan-950/30 text-cyan-300'
-                    : 'border-slate-800 bg-slate-950/20 text-gray-400 hover:border-slate-600'
-                }`}
-              >
-                <div className="font-bold text-[11px] font-mono">{t.name}</div>
-                <div className="text-[9px] text-gray-400 mt-0.5">{t.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 2. 3D 표적 형태 선택 */}
-        <div className="flex flex-col gap-1.5 font-mono text-xs">
-          <div className="text-[11px] text-gray-400 tracking-wider flex items-center gap-1.5">
-            <Box className="w-3.5 h-3.5 text-pink-400" strokeWidth={1.5} />
-            <span>02 // 3D 표적 기체 형태</span>
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { id: 'drone', name: '드론', code: '전술 헥사 드론' },
-              { id: 'sphere', name: '구체', code: '에너지 코어' },
-              { id: 'cube', name: '큐브', code: '큐브 모듈' },
-              { id: 'disc', name: '디스크', code: '비행 디스크' },
-            ].map((s) => (
-              <button
-                key={s.id}
-                onClick={() => onSelectShape(s.id as TargetShape)}
-                className={`py-2 px-1.5 rounded-sm border text-center transition-all cursor-pointer ${
-                  currentShape === s.id
-                    ? 'border-pink-500 bg-pink-950/30 text-pink-300'
-                    : 'border-slate-800 bg-slate-950/20 text-gray-400 hover:border-slate-600'
-                }`}
-              >
-                <div className="font-bold text-[11px] font-mono">{s.name}</div>
-                <div className="text-[9px] text-gray-400 mt-0.5">{s.code}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 3. 효과음 프리셋 및 볼륨 */}
-        <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-3 font-mono text-xs">
-          <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400 tracking-wider flex items-center gap-1.5">
-              <Volume2 className="w-3.5 h-3.5 text-cyan-400" strokeWidth={1.5} />
-              <span>03 // 사격 효과음 프리셋</span>
-            </span>
-            <span className="text-[11px] text-cyan-400 font-bold">
-              볼륨: {Math.round(soundVolume * 100)}%
-            </span>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'laser', name: 'SF 레이저', desc: '플라즈마 광선 발사음' },
-              { id: 'kinetic', name: '실탄 총기', desc: '화약 격발 격타음' },
-              { id: 'retro', name: '8비트 레트로', desc: '아케이드 칩튠 사운드' },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => handleTestSound(p.id as SoundPresetType)}
-                className={`p-2 rounded-sm border text-left transition-all cursor-pointer ${
-                  soundPreset === p.id
-                    ? 'border-cyan-400 bg-cyan-950/30 text-cyan-300'
-                    : 'border-slate-800 bg-slate-950/20 text-gray-400 hover:border-slate-600'
-                }`}
-              >
-                <div className="font-bold text-[11px]">{p.name}</div>
-                <div className="text-[9px] text-gray-400 mt-0.5">{p.desc}</div>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-3 pt-1">
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={soundVolume}
-              onChange={(e) => onUpdateSoundVolume(parseFloat(e.target.value))}
-              className="accent-cyan-400 cursor-pointer flex-1"
+      }
+    >
+      <div className="flex flex-col gap-6">
+        <Section title="경기">
+          <Field label="난이도" note="표적 속도·크기와 AI 라이벌의 실력이 함께 바뀌어요. 친구와 대결하면 경기를 시작한 쪽의 난이도로 맞춰져요.">
+            <Segmented
+              label="난이도"
+              value={currentDifficulty}
+              onChange={onSelectDifficulty}
+              options={DIFFICULTIES.map((d) => ({ value: d, label: DIFFICULTY_NAME[d], hint: DIFFICULTY_HINT[d] }))}
             />
-          </div>
-        </div>
+          </Field>
+          <Field label="경기장 테마" note="이 기기 화면에만 적용돼요.">
+            <Segmented label="경기장 테마" value={currentTheme} onChange={onSelectTheme} options={THEMES.map((t) => ({ value: t, label: THEME_NAME[t] }))} />
+          </Field>
+          <Field label="표적 모양">
+            <Segmented label="표적 모양" value={currentShape} onChange={onSelectShape} options={SHAPES.map((s) => ({ value: s, label: SHAPE_NAME[s] }))} />
+          </Field>
+        </Section>
 
-        {/* 4. 한국어 음성 브리핑 */}
-        <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-3 font-mono text-xs">
-          <div className="flex justify-between items-center">
-            <span className="text-[11px] text-gray-400 tracking-wider flex items-center gap-1.5">
-              <Mic className="w-3.5 h-3.5 text-purple-400" strokeWidth={1.5} />
-              <span>04 // 한국어 전술 음성 안내 (TTS)</span>
-            </span>
+        <Section title="소리">
+          <Field label="사격 효과음" note="고르면 바로 들려줘요.">
+            <Segmented label="사격 효과음" value={soundPreset} onChange={handleTestSound} options={SOUND_OPTIONS} />
+          </Field>
+          <Slider label="효과음 크기" value={soundVolume} min={0} max={1} step={0.05} onChange={onUpdateSoundVolume} format={(v) => `${Math.round(v * 100)}%`} />
+          <Field label="음성 안내">
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleTestVoice}
-                className="text-[10px] border border-purple-500/40 px-2 py-0.5 text-purple-300 hover:border-purple-400 rounded-sm"
-              >
-                음성 테스트
-              </button>
-              <button
-                onClick={() => onToggleVoice(!voiceEnabled)}
-                className={`text-[10px] px-2 py-0.5 border rounded-sm font-bold ${
-                  voiceEnabled
-                    ? 'bg-green-950/40 text-green-400 border-green-500'
-                    : 'bg-red-950/40 text-red-400 border-red-500'
-                }`}
-              >
-                {voiceEnabled ? '활성화됨' : '음소거'}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={voiceVolume}
-              disabled={!voiceEnabled}
-              onChange={(e) => onUpdateVoiceVolume(parseFloat(e.target.value))}
-              className="accent-purple-400 cursor-pointer flex-1 disabled:opacity-40"
-            />
-            <span className="text-[10px] text-purple-300 font-bold w-8 text-right">
-              {Math.round(voiceVolume * 100)}%
-            </span>
-          </div>
-        </div>
-
-        {/* 5. 난이도 및 조준 감도 & 릴레이 IP */}
-        <div className="grid grid-cols-2 gap-3 border-t border-slate-800/80 pt-3 font-mono text-xs">
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between text-[11px] text-gray-400 items-center">
-              <span className="flex items-center gap-1">
-                <Crosshair className="w-3 h-3 text-cyan-400" strokeWidth={1.5} />
-                <span>조준 감도</span>
-              </span>
-              <span className="text-cyan-400 font-bold">{sensitivity.toFixed(1)}x</span>
-            </div>
-            <input
-              type="range"
-              min="0.5"
-              max="2.5"
-              step="0.1"
-              value={sensitivity}
-              onChange={(e) => onUpdateSensitivity(parseFloat(e.target.value))}
-              className="accent-cyan-400 cursor-pointer"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] text-gray-400 flex items-center gap-1">
-              <Server className="w-3 h-3 text-cyan-400" strokeWidth={1.5} />
-              <span>릴레이 서버 호스트</span>
-            </span>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={hostInput}
-                onChange={(e) => setHostInput(e.target.value)}
-                placeholder="localhost"
-                className="bg-slate-950/60 border border-slate-700 px-2 py-1 text-xs text-white font-mono w-full focus:outline-none focus:border-cyan-400 rounded-sm"
+              <Segmented
+                label="음성 안내"
+                value={voiceEnabled ? 'on' : 'off'}
+                onChange={(v) => onToggleVoice(v === 'on')}
+                options={[
+                  { value: 'on', label: '켜기' },
+                  { value: 'off', label: '끄기' },
+                ]}
+                className="w-56"
               />
-              <button
-                onClick={handleSaveHost}
-                className="hud-btn text-[10px] py-1 px-2"
-              >
-                저장
-              </button>
+              <Button variant="secondary" icon={Mic} disabled={!voiceEnabled} onClick={() => VoiceManager.getInstance().speak('GAME_START')}>
+                들어 보기
+              </Button>
             </div>
-          </div>
-        </div>
+          </Field>
+          <Slider
+            label="음성 크기"
+            value={voiceVolume}
+            min={0}
+            max={1}
+            step={0.05}
+            disabled={!voiceEnabled}
+            onChange={onUpdateVoiceVolume}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+        </Section>
 
-        {/* 6. 전시회 전용 기기 역할 고정 설정 */}
-        <div className="flex flex-col gap-2 border-t border-slate-800/80 pt-3">
-          <div className="flex justify-between items-center">
-            <span className="text-[11px] text-cyan-400 font-mono font-bold flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{'// 전시회 기기 역할 고정 (Device Role Lock)'}</span>
-            </span>
-            <span className="text-[10px] text-gray-400">
-              현재 기기: <b className="text-white font-mono">{clientRole === 'P1' ? '선수 1 (시안)' : clientRole === 'P2' ? '선수 2 (마젠타)' : '관람 중계자'}</b>
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => onSelectRole?.('P1')}
-              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
-                clientRole === 'P1'
-                  ? 'border-cyan-400 bg-cyan-950/60 text-cyan-300 font-bold shadow-[0_0_12px_rgba(0,240,255,0.3)]'
-                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
-              }`}
-            >
-              <span className="text-xs font-bold text-cyan-400">선수 1 (1P)</span>
-              <span className="text-[10px] text-gray-400 font-mono">시안 블루 아바타</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectRole?.('P2')}
-              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
-                clientRole === 'P2'
-                  ? 'border-pink-500 bg-pink-950/60 text-pink-300 font-bold shadow-[0_0_12px_rgba(255,0,85,0.3)]'
-                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
-              }`}
-            >
-              <span className="text-xs font-bold text-pink-400">선수 2 (2P)</span>
-              <span className="text-[10px] text-gray-400 font-mono">마젠타 핑크 아바타</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectRole?.('SPECTATOR')}
-              className={`p-2.5 rounded border text-center transition-all flex flex-col items-center gap-1 cursor-pointer ${
-                clientRole === 'SPECTATOR'
-                  ? 'border-yellow-400 bg-yellow-950/60 text-yellow-300 font-bold shadow-[0_0_12px_rgba(255,230,0,0.3)]'
-                  : 'border-slate-800 bg-slate-950/40 text-gray-400 hover:border-slate-700'
-              }`}
-            >
-              <span className="text-xs font-bold text-yellow-400">관람 중계 (모니터)</span>
-              <span className="text-[10px] text-gray-400 font-mono">4단 방송 카메라</span>
-            </button>
-          </div>
-          <p className="text-[10px] text-gray-400 leading-relaxed">
-            💡 기기 역할을 선택하면 <b>브라우저에 영구 고정</b>되어, 헤드셋 절전(Sleep) 후 재연결되거나 새로고침 시에도 역할이 절대 바뀌지 않습니다.
-          </p>
-        </div>
+        <Section title="조작 (PC)">
+          <Slider label="조준 감도" value={sensitivity} min={0.5} max={2.5} step={0.1} onChange={onUpdateSensitivity} format={(v) => `${v.toFixed(1)}배`} />
+        </Section>
 
-        {/* 닫기 버튼 */}
-        <div className="pt-2 border-t border-slate-800/80">
-          <button
-            onClick={onClose}
-            className="hud-btn hud-btn-primary w-full py-2 text-xs gap-1.5"
+        <Section title="이 기기">
+          <Field
+            label="기기 역할 고정"
+            note={`지금: ${ROLE_NAME[clientRole]}. 고른 역할은 이 브라우저에 저장되어 헤드셋이 잠들었다 깨거나 새로고침해도 바뀌지 않아요.`}
           >
-            <Check className="w-4 h-4" strokeWidth={2} />
-            <span>설정 저장 및 사격장 복귀</span>
-          </button>
-        </div>
+            <Segmented
+              label="기기 역할"
+              value={clientRole}
+              onChange={(r) => onSelectRole?.(r)}
+              options={[
+                { value: 'P1', label: '1P', hint: '플레이어 1 · 시안' },
+                { value: 'P2', label: '2P', hint: '플레이어 2 · 마젠타' },
+                { value: 'SPECTATOR', label: '관전', hint: 'TV·모니터 중계' },
+              ]}
+            />
+          </Field>
+          <Field label="릴레이 서버 주소" note="게임 서버를 켠 PC의 주소예요. 보통은 바꿀 필요가 없어요.">
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Monitor className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-3" aria-hidden="true" />
+                <input
+                  type="text"
+                  value={hostInput}
+                  onChange={(e) => {
+                    setHostInput(e.target.value);
+                    setHostSaved(false);
+                  }}
+                  placeholder="localhost"
+                  aria-label="릴레이 서버 주소"
+                  className="hud-interactive h-11 w-full rounded-lg border border-line-strong bg-ink/70 pl-9 pr-3 font-num text-[16px] text-fg outline-none transition-colors placeholder:text-fg-3 focus:border-p1"
+                />
+              </div>
+              <Button variant="secondary" icon={hostSaved ? Check : undefined} onClick={handleSaveHost}>
+                {hostSaved ? '저장됨' : '저장'}
+              </Button>
+            </div>
+          </Field>
+        </Section>
       </div>
-    </div>
+    </ModalShell>
   );
 };

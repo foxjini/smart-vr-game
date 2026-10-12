@@ -60,11 +60,17 @@ export class SoundManager {
     }
   }
 
+  /** 관전 화면 대기용 시연처럼 잠시 소리를 내지 않을 때 (사용자의 음량·음소거 설정은 그대로) */
+  private suppressed = false;
+  public setSuppressed(suppressed: boolean) {
+    this.suppressed = suppressed;
+  }
+
   // ==========================================
   // 1. 발사음 (Fire Sound)
   // ==========================================
   public playFire() {
-    if (this.isMuted) return;
+    if (this.isMuted || this.suppressed) return;
     this.initContext();
     if (!this.ctx || !this.masterGain) return;
 
@@ -149,7 +155,7 @@ export class SoundManager {
   // 2. 명중 파괴음 (Hit Sound)
   // ==========================================
   public playHit() {
-    if (this.isMuted) return;
+    if (this.isMuted || this.suppressed) return;
     this.initContext();
     if (!this.ctx || !this.masterGain) return;
 
@@ -225,7 +231,7 @@ export class SoundManager {
   // 3. 탄약 소진 (Empty Sound)
   // ==========================================
   public playEmpty() {
-    if (this.isMuted) return;
+    if (this.isMuted || this.suppressed) return;
     this.initContext();
     if (!this.ctx || !this.masterGain) return;
 
@@ -249,7 +255,7 @@ export class SoundManager {
   // 4. 재장전 (Reload Sound)
   // ==========================================
   public playReload() {
-    if (this.isMuted) return;
+    if (this.isMuted || this.suppressed) return;
     this.initContext();
     if (!this.ctx || !this.masterGain) return;
 
@@ -303,7 +309,7 @@ export class SoundManager {
   // 5. 라운드 종료 팡파르
   // ==========================================
   public playGameOver() {
-    if (this.isMuted) return;
+    if (this.isMuted || this.suppressed) return;
     this.initContext();
     if (!this.ctx || !this.masterGain) return;
 
@@ -327,7 +333,7 @@ export class SoundManager {
   // 6. 10초 전 긴급 경보 사이렌 (Emergency Siren)
   // ==========================================
   public play10sWarningSiren() {
-    if (this.isMuted) return;
+    if (this.isMuted || this.suppressed) return;
     this.initContext();
     if (!this.ctx || !this.masterGain) return;
 
