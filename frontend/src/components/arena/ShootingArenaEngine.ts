@@ -25,6 +25,11 @@ import { PerfPanel } from './visual/debug/PerfPanel';
 import { PALETTE, teamColor, cssColor, cssRgba } from './visual/palette';
 import { configureRenderer, createEnvironmentMap, requestTargetFrameRate, asCanvasTexture } from './visual/renderSetup';
 import { FONT_UI, FONT_NUM, loadCanvasFonts } from './visual/fonts';
+import { DroneFactory, targetGlowColor } from './visual/DroneFactory';
+import { HitProxyFactory } from './visual/hitProxies';
+import { EffectsSystem } from './visual/EffectsSystem';
+import { TargetLabels } from './visual/TargetLabels';
+import { Haptics, HapticPattern } from './visual/Haptics';
 
 export const TARGET_KEYWORDS: TargetKeyword[] = ['정보', '통신', '제어', '회로', '인공', '전자'];
 
@@ -44,6 +49,14 @@ type PlayerSlot = 1 | 2;
 /** 결과 없이 끝나는 경기 종료 사유 (경기 중단, 같은 역할 새 접속, 내 자리를 다른 기기가 사용 중) */
 const ABORT_REASONS = ['ABORT', 'REPLACED', 'SLOT_BUSY'];
 
+/** 블래스터 기준 총구 끝 위치 (빔·섬광이 나가는 곳, 사격 판정 광선은 블래스터 원점에서 나감) */
+const MUZZLE_LOCAL = new THREE.Vector3(0, 0.02, -0.5);
+/** 표적 등장 연출 시간(초) / 경기 종료 후 남은 표적이 사라지는 시간(초) */
+const TARGET_SPAWN_TIME = 0.35;
+const TARGET_DESPAWN_TIME = 0.4;
+/** 빗나간 사격의 빔 길이(m) */
+const MISS_BEAM_LENGTH = 55;
+
 export interface TargetObject extends TargetObjectRef {
   id: string;
   mesh: THREE.Group;
@@ -57,25 +70,22 @@ export interface TargetObject extends TargetObjectRef {
   timeAlive: number;
   isHit: boolean;
   hitProgress: number;
-  subMeshesToRotate?: THREE.Mesh[];
-  labelSprite?: THREE.Sprite;
-}
-
-interface Particle {
-  mesh: THREE.Mesh;
-  velocity: THREE.Vector3;
-  lifetime: number;
-  maxLife: number;
-}
-
-interface LaserBolt {
-  mesh: THREE.Group;
-  direction: THREE.Vector3;
-  speed: number;
-  distanceTraveled: number;
-  maxDistance: number;
-  color: number;
-  targetHit?: { target: TargetObject; point: THREE.Vector3; color: number };
+  /** 사격 판정 메시 (예전 표적 모양 그대로, 보이지 않음) */
+  hitMeshes: THREE.Mesh[];
+  /** 예전처럼 회전하는 판정 메시 */
+  spinners: THREE.Object3D[];
+  /** 판정 메시 회전을 따라가는 장식 (spinners와 같은 순서) */
+  visualSpinners: Array<THREE.Object3D | null>;
+  /** 겉모습 (판정에 영향 없음) */
+  visual: THREE.Group;
+  labelSprite: THREE.Sprite;
+  labelBase: THREE.Vector2;
+  labelTop: number;
+  banks: boolean;
+  /** 등장 연출 진행 시간(초) */
+  spawnAge: number;
+  /** 경기가 끝나 사라지는 중이면 0→1, 아니면 -1 */
+  despawn: number;
 }
 
 /** PC 조준점 화면 위치 (CSS 픽셀, 화면 왼쪽 위 기준) */
@@ -106,8 +116,6 @@ interface BlasterRig {
   displayCtx: CanvasRenderingContext2D;
   laserBeam: THREE.Line;
   laserDot: THREE.Mesh;
-  muzzleFlash: THREE.PointLight;
-  muzzleTimer: number;
   recoilOffset: number;
   primaryColor: number;
   nameTag: string;
@@ -201,19 +209,20 @@ export class ShootingArenaEngine {
   private p1Head!: THREE.Group;
   private p2Head!: THREE.Group;
   private vrPromptMesh!: THREE.Mesh;
-  private particles: Particle[] = [];
-  private laserBolts: LaserBolt[] = [];
   private activeTargets: TargetObject[] = [];
   private vrButtonElement?: HTMLElement;
 
-  // WebGL 자원 최적화 캐시 & 공유 객체 (Quest 2 VRAM 누수 원천 차단)
-  private targetLabelCache: Map<TargetKeyword, { texture: THREE.CanvasTexture; material: THREE.SpriteMaterial; points: number }> = new Map();
+  // 표적·효과 (모양·재질·텍스처를 한 번만 만들어 모든 표적이 공유: Quest 2 VRAM 누수 방지)
+  private labels!: TargetLabels;
+  private drones!: DroneFactory;
+  private effects!: EffectsSystem;
+  private haptics = new Haptics();
   /** 금속 재질 반사용 환경맵 */
   private envMap?: THREE.Texture;
   /** 결과판에 마지막으로 그린 상태 (폰트를 불러온 뒤 같은 내용으로 다시 그리기 위함) */
   private vrPromptState: { isGameOver: boolean; winner?: string } = { isGameOver: false };
   private disposed = false;
-  private sharedParticleGeo = new THREE.BoxGeometry(1, 1, 1);
+  private warmUpTimer: ReturnType<typeof setTimeout> | null = null;
 
   // 성능 최적화 타이머 (초당 수십회 불필요한 GPU 업로드 & React 리렌더링 방지)
   private oledUpdateTimer: number = 0;
@@ -226,6 +235,11 @@ export class ShootingArenaEngine {
   private _tempVec3 = new THREE.Vector3();
   private _tempQuat1 = new THREE.Quaternion();
   private _tempQuat2 = new THREE.Quaternion();
+  private _muzzle = new THREE.Vector3();
+  private _beamEnd = new THREE.Vector3();
+  private _camWorld = new THREE.Vector3();
+  private _targetWorld = new THREE.Vector3();
+  private raycastHits: THREE.Intersection[] = [];
 
   // WebXR 컨트롤러 (Quest 2 터치 컨트롤러)
   private controller0!: THREE.XRTargetRaySpace;
@@ -258,11 +272,7 @@ export class ShootingArenaEngine {
   private aimDir = new THREE.Vector3();
   private aimQuat = new THREE.Quaternion();
   private aimPoint = new THREE.Vector3();
-  private aimMeshes: THREE.Object3D[] = [];
   private aimHits: THREE.Intersection[] = [];
-  private collectAimMesh = (o: THREE.Object3D) => {
-    if ((o as THREE.Mesh).isMesh) this.aimMeshes.push(o);
-  };
   /** 개발용 성능 표시 (?debug=perf일 때만) */
   private perfPanel?: PerfPanel;
 
@@ -316,6 +326,12 @@ export class ShootingArenaEngine {
     this.scene.add(this.themeGroup);
     this.scene.add(this.targetsGroup);
 
+    // 표적 겉모습·라벨·사격 효과
+    this.labels = new TargetLabels();
+    this.drones = new DroneFactory(this.labels);
+    this.effects = new EffectsSystem(this.labels);
+    this.scene.add(this.effects.root);
+
     // 4. 컴포넌트 빌드
     this.initLights();
     this.buildTheme(this.currentTheme);
@@ -359,8 +375,23 @@ export class ShootingArenaEngine {
       this.perfPanel = new PerfPanel(this.renderer);
     }
 
-    // 8. 렌더 루프 시작
+    // 8. 렌더 루프 시작. 첫 화면·접속 처리를 막지 않도록 잠시 뒤 셰이더를 미리 컴파일
     this.renderer.setAnimationLoop(this.animate);
+    this.warmUpTimer = setTimeout(() => this.warmUpShaders(), 800);
+  }
+
+  /**
+   * 첫 표적·첫 명중 때 화면이 멈칫하지 않도록 아직 그려 본 적 없는 재질을 미리 컴파일
+   * (표적 4종 × 1·2점 견본, 평소에는 숨어 있는 빔·점수 팝업)
+   */
+  private warmUpShaders() {
+    this.warmUpTimer = null;
+    if (this.disposed) return;
+    const samples = this.drones.createSamples(this.difficultyConfigs[this.currentDifficulty].scale);
+    this.renderer.compileAsync(samples, this.camera, this.scene).catch(() => {
+      // 미리 컴파일하지 못해도 처음 그릴 때 컴파일됨
+    });
+    this.renderer.compileAsync(this.effects.root, this.camera, this.scene).catch(() => {});
   }
 
   // ==========================================
@@ -395,8 +426,6 @@ export class ShootingArenaEngine {
       const shooter: PlayerSlot = data.playerId === 2 ? 2 : 1;
       if (shooter === this.localSlot) return;
       const blaster = shooter === 1 ? this.p1Blaster : this.p2Blaster;
-      blaster.muzzleFlash.intensity = 15;
-      blaster.muzzleTimer = 0.08;
       blaster.recoilOffset = 0.08;
       this.soundManager.playFire();
 
@@ -405,7 +434,9 @@ export class ShootingArenaEngine {
       blaster.group.getWorldPosition(muzzlePos);
       blaster.group.getWorldQuaternion(muzzleQuat);
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(muzzleQuat).normalize();
-      this.spawnLaserBolt(muzzlePos, forward, teamColor(shooter), 55);
+      // 빔 끝은 이 화면에 보이는 표적까지 (명중·점수는 서버 확정으로만 처리)
+      const seen = this.raycastTargets(muzzlePos, forward);
+      this.showShot(blaster, forward, teamColor(shooter), seen ? seen.point : null);
 
       // 상대 선수의 발사 수를 세어 명중률 계산 (결과 비교 카드용)
       if (this.isPlaying && this.matchId !== null) {
@@ -427,7 +458,7 @@ export class ShootingArenaEngine {
       const targetObj = this.activeTargets.find((t) => t.id === data.targetId);
       if (targetObj && !targetObj.isHit) {
         targetObj.isHit = true;
-        this.createExplosion(new THREE.Vector3(...data.hitPoint), teamColor(slot));
+        this.showHit(targetObj, new THREE.Vector3(...data.hitPoint), teamColor(slot));
         this.soundManager.playHit();
       }
 
@@ -519,10 +550,12 @@ export class ShootingArenaEngine {
       this.handleReload();
     };
 
-    const handleConnected = (event: THREE.Event & { data?: { handedness?: string } }) => {
+    const handleConnected = (event: THREE.Event & { data?: XRInputSource }) => {
       const controller = event.target as THREE.XRTargetRaySpace;
       const data = event.data;
       this.isVRControllerActive = true;
+      // 진동을 보낼 컨트롤러 입력 장치 기억
+      controller.userData.inputSource = data;
 
       if (data && (data.handedness === 'right' || !this.activeController)) {
         this.attachBlasterToController(controller);
@@ -530,6 +563,7 @@ export class ShootingArenaEngine {
     };
 
     const handleDisconnected = (event: THREE.Event) => {
+      (event.target as THREE.XRTargetRaySpace).userData.inputSource = undefined;
       if (this.activeController === event.target) {
         this.activeController = undefined;
         this.resetLocalBlasterToDefault();
@@ -701,11 +735,6 @@ export class ShootingArenaEngine {
     grip.position.set(0, -0.1, 0.0);
     group.add(grip);
 
-    // 총구 화염 포인트 라이트
-    const muzzleFlash = new THREE.PointLight(primaryColor, 0, 8);
-    muzzleFlash.position.set(0, 0.02, -0.5);
-    group.add(muzzleFlash);
-
     // 실시간 레이저 조준선
     const points = [new THREE.Vector3(0, 0.02, -0.48), new THREE.Vector3(0, 0.02, -40)];
     const beamGeo = new THREE.BufferGeometry().setFromPoints(points);
@@ -753,8 +782,6 @@ export class ShootingArenaEngine {
       displayCtx: ctx,
       laserBeam,
       laserDot,
-      muzzleFlash,
-      muzzleTimer: 0,
       recoilOffset: 0,
       primaryColor,
       nameTag,
@@ -1155,63 +1182,9 @@ export class ShootingArenaEngine {
     this.cyberAI.setDifficulty(diff);
   }
 
-  /** 표적 라벨 캔버스에 키워드와 배점을 그림 (웹 폰트를 불러온 뒤 다시 그릴 때도 사용) */
-  private drawTargetLabel(canvas: HTMLCanvasElement, keyword: TargetKeyword, points: number) {
-    const ctx = canvas.getContext('2d')!;
-    const isBonus = points === 2; // 정보, 통신
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // 표적은 팀 색과 겹치지 않게: 2점은 금색, 1점은 중립색
-    ctx.fillStyle = isBonus ? 'rgba(28, 22, 4, 0.92)' : 'rgba(12, 20, 36, 0.9)';
-    ctx.beginPath();
-    ctx.roundRect(10, 8, 236, 112, 18);
-    ctx.fill();
-
-    ctx.strokeStyle = isBonus ? cssColor(PALETTE.gold) : cssRgba(PALETTE.fg2, 0.75);
-    ctx.lineWidth = isBonus ? 6 : 3.5;
-    ctx.stroke();
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = isBonus ? cssColor(PALETTE.gold) : cssColor(PALETTE.fg2);
-    ctx.font = `700 22px ${FONT_UI}`;
-    ctx.fillText(isBonus ? '★ 2점 ★' : '1점', 128, 40);
-
-    ctx.fillStyle = isBonus ? cssColor(PALETTE.gold) : '#ffffff';
-    ctx.font = `900 56px ${FONT_UI}`;
-    ctx.fillText(keyword, 128, 96);
-  }
-
-  /** 6대 키워드 표적 라벨 머티리얼을 단 1회만 생성하여 VRAM 누수 원천 차단 */
-  private getOrCreateTargetLabelMaterial(keyword: TargetKeyword, points: number): THREE.SpriteMaterial {
-    let cached = this.targetLabelCache.get(keyword);
-    if (!cached) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 128;
-      this.drawTargetLabel(canvas, keyword, points);
-
-      // 멀리 있는 라벨도 깨지지 않도록 밉맵 사용, 손에 든 총보다 앞에 그려지지 않도록 깊이 검사
-      const texture = asCanvasTexture(canvas, true);
-      const mat = new THREE.SpriteMaterial({
-        map: texture,
-        transparent: true,
-        depthTest: true,
-        depthWrite: false,
-        fog: false,
-        toneMapped: false,
-      });
-      cached = { texture, material: mat, points };
-      this.targetLabelCache.set(keyword, cached);
-    }
-    return cached.material;
-  }
-
-  /** 웹 폰트를 불러온 뒤 캔버스 글자(표적 라벨·OLED·결과판)를 다시 그림 */
+  /** 웹 폰트를 불러온 뒤 캔버스 글자(표적 라벨·점수 팝업·OLED·결과판)를 다시 그림 */
   private refreshCanvasTextures() {
-    this.targetLabelCache.forEach((entry, keyword) => {
-      this.drawTargetLabel(entry.texture.image as HTMLCanvasElement, keyword, entry.points);
-      entry.texture.needsUpdate = true;
-    });
+    this.labels.refresh();
     [this.p1Blaster, this.p2Blaster].forEach((b) => {
       if (b) b.displayKey = '';
     });
@@ -1219,101 +1192,52 @@ export class ShootingArenaEngine {
     this.updateVRPrompt(this.vrPromptState.isGameOver, this.vrPromptState.winner);
   }
 
-  /** 표적 상단 6가지 키워드 라벨 스프라이트 생성 (공유 캐시 머티리얼 재사용) */
-  private createTargetLabelSprite(keyword: TargetKeyword, points: number, scale: number = 1.0): THREE.Sprite {
-    const mat = this.getOrCreateTargetLabelMaterial(keyword, points);
-    const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(1.4 * scale, 0.7 * scale, 1.0);
-    sprite.position.set(0, 0.65 * scale, 0);
-    return sprite;
-  }
+  /** 표적을 만들어 장면에 추가 (겉모습은 공유 지오메트리, 사격 판정은 예전 모양 그대로) */
+  private addTarget(spec: {
+    id: string;
+    shape: TargetShape;
+    keyword: TargetKeyword;
+    points: number;
+    basePos: THREE.Vector3;
+    velocity: THREE.Vector3;
+    frequency: number;
+    amplitude: number;
+  }): TargetObject {
+    const s = this.difficultyConfigs[this.currentDifficulty].scale;
+    const parts = this.drones.create(spec.shape, spec.points, spec.keyword, s);
+    parts.root.position.copy(spec.basePos);
+    // 등장 연출: 겉모습만 작게 시작 (판정 메시는 처음부터 원래 크기라 맞는 범위는 그대로)
+    parts.visual.scale.setScalar(0.001);
+    parts.label.visible = false;
 
-  private createTargetMesh(shape: TargetShape, points: number = 1): { group: THREE.Group; subMeshesToRotate: THREE.Mesh[] } {
-    const group = new THREE.Group();
-    const subMeshesToRotate: THREE.Mesh[] = [];
-    const cfg = this.difficultyConfigs[this.currentDifficulty];
-    const s = cfg.scale;
-    const isBonus = points === 2; // 정보/통신 (황금빛/시안 하이라이트)
-
-    if (shape === 'drone') {
-      const bodyColor = isBonus ? 0x0e2a44 : 0x1a2233;
-      const bodyGeo = new THREE.SphereGeometry(0.35 * s, 16, 16);
-      const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, metalness: 0.9, roughness: 0.2 });
-      const body = new THREE.Mesh(bodyGeo, bodyMat);
-      group.add(body);
-
-      const eyeColor = isBonus ? 0xffe600 : 0xff0055;
-      const eyeGeo = new THREE.SphereGeometry(0.13 * s, 16, 16);
-      const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
-      const eye = new THREE.Mesh(eyeGeo, eyeMat);
-      eye.position.set(0, 0, 0.3 * s);
-      group.add(eye);
-
-      const propPositions = [
-        [0.45 * s, 0.15 * s, 0.45 * s],
-        [-0.45 * s, 0.15 * s, 0.45 * s],
-        [0.45 * s, 0.15 * s, -0.45 * s],
-        [-0.45 * s, 0.15 * s, -0.45 * s],
-      ];
-
-      propPositions.forEach(([px, py, pz]) => {
-        const armGeo = new THREE.CylinderGeometry(0.03 * s, 0.03 * s, 0.5 * s);
-        armGeo.rotateZ(Math.PI / 4);
-        const armMat = new THREE.MeshStandardMaterial({ color: 0x445566 });
-        const arm = new THREE.Mesh(armGeo, armMat);
-        arm.position.set(px * 0.6, py * 0.6, pz * 0.6);
-        group.add(arm);
-
-        const propColor = isBonus ? 0xffe600 : 0x00f0ff;
-        const propGeo = new THREE.BoxGeometry(0.4 * s, 0.02 * s, 0.06 * s);
-        const propMat = new THREE.MeshBasicMaterial({ color: propColor });
-        const prop = new THREE.Mesh(propGeo, propMat);
-        prop.position.set(px, py, pz);
-        group.add(prop);
-        subMeshesToRotate.push(prop);
-      });
-    } else if (shape === 'sphere') {
-      const coreColor = isBonus ? 0xffe600 : 0x00f0ff;
-      const coreGeo = new THREE.SphereGeometry(0.45 * s, 24, 24);
-      const coreMat = new THREE.MeshStandardMaterial({
-        color: coreColor,
-        emissive: isBonus ? 0xcc9900 : 0x0088cc,
-        emissiveIntensity: 0.9,
-        roughness: 0.1,
-      });
-      const core = new THREE.Mesh(coreGeo, coreMat);
-      group.add(core);
-
-      const wireGeo = new THREE.IcosahedronGeometry(0.6 * s, 1);
-      const wireMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true });
-      const wire = new THREE.Mesh(wireGeo, wireMat);
-      group.add(wire);
-      subMeshesToRotate.push(wire);
-    } else if (shape === 'cube') {
-      const cubeGeo = new THREE.BoxGeometry(0.7 * s, 0.7 * s, 0.7 * s);
-      const cubeMat = new THREE.MeshStandardMaterial({
-        color: isBonus ? 0x332200 : 0x221133,
-        emissive: isBonus ? 0xffe600 : 0xff0055,
-        emissiveIntensity: 0.8,
-        metalness: 0.8,
-      });
-      const cube = new THREE.Mesh(cubeGeo, cubeMat);
-      group.add(cube);
-      subMeshesToRotate.push(cube);
-    } else if (shape === 'disc') {
-      const discGeo = new THREE.CylinderGeometry(0.6 * s, 0.6 * s, 0.15 * s, 24);
-      const discMat = new THREE.MeshStandardMaterial({
-        color: isBonus ? 0x00f0ff : 0xffe600,
-        emissive: isBonus ? 0x0088cc : 0x998800,
-        emissiveIntensity: 0.7,
-        metalness: 0.7,
-      });
-      const disc = new THREE.Mesh(discGeo, discMat);
-      group.add(disc);
-      subMeshesToRotate.push(disc);
-    }
-
-    return { group, subMeshesToRotate };
+    const target: TargetObject = {
+      id: spec.id,
+      mesh: parts.root,
+      shape: spec.shape,
+      keyword: spec.keyword,
+      points: spec.points,
+      basePos: spec.basePos,
+      velocity: spec.velocity,
+      frequency: spec.frequency,
+      amplitude: spec.amplitude,
+      timeAlive: 0,
+      isHit: false,
+      hitProgress: 0,
+      hitMeshes: parts.hitMeshes,
+      spinners: parts.spinners,
+      visualSpinners: parts.visualSpinners,
+      visual: parts.visual,
+      labelSprite: parts.label,
+      labelBase: parts.labelBase,
+      labelTop: parts.labelTop,
+      banks: parts.banks,
+      spawnAge: 0,
+      despawn: -1,
+    };
+    this.targetsGroup.add(parts.root);
+    this.activeTargets.push(target);
+    this.effects.spawnRing(spec.basePos, targetGlowColor(spec.points), s);
+    return target;
   }
 
   private spawnTarget() {
@@ -1324,17 +1248,10 @@ export class ShootingArenaEngine {
     const points = (keyword === '정보' || keyword === '통신') ? 2 : 1;
 
     const cfg = this.difficultyConfigs[this.currentDifficulty];
-    const { group, subMeshesToRotate } = this.createTargetMesh(this.currentShape, points);
-
-    // 표적 상단에 텍스트 뱃지 스프라이트 부착
-    const labelSprite = this.createTargetLabelSprite(keyword, points, cfg.scale);
-    group.add(labelSprite);
-
     const x = (Math.random() - 0.5) * 16;
     const y = 1.2 + Math.random() * 3.5;
     const z = -12 - Math.random() * 15;
     const basePos = new THREE.Vector3(x, y, z);
-    group.position.copy(basePos);
 
     const vx = (Math.random() > 0.5 ? 1 : -1) * (cfg.speed * (0.6 + Math.random() * 0.8));
     const vy = (Math.random() - 0.5) * cfg.speed * 0.5;
@@ -1342,25 +1259,7 @@ export class ShootingArenaEngine {
     const frequency = 1.5 + Math.random() * 2.0;
     const amplitude = 0.8 + Math.random() * 1.2;
 
-    const targetObj: TargetObject = {
-      id,
-      mesh: group,
-      shape: this.currentShape,
-      keyword,
-      points,
-      basePos,
-      velocity,
-      frequency,
-      amplitude,
-      timeAlive: 0,
-      isHit: false,
-      hitProgress: 0,
-      subMeshesToRotate,
-      labelSprite,
-    };
-
-    this.targetsGroup.add(group);
-    this.activeTargets.push(targetObj);
+    this.addTarget({ id, shape: this.currentShape, keyword, points, basePos, velocity, frequency, amplitude });
 
     // 서버 경기면 다른 선수·관람 화면에 키워드와 점수를 포함해 스폰 정보를 보냄 (로컬 경기는 공유하지 않음)
     if (this.matchId !== null) {
@@ -1384,55 +1283,21 @@ export class ShootingArenaEngine {
     const keyword = data.keyword || TARGET_KEYWORDS[Math.floor(Math.random() * TARGET_KEYWORDS.length)];
     const points = data.points || ((keyword === '정보' || keyword === '통신') ? 2 : 1);
 
-    const cfg = this.difficultyConfigs[this.currentDifficulty];
-    const { group, subMeshesToRotate } = this.createTargetMesh(data.shape || this.currentShape, points);
-
-    // 표적 상단에 텍스트 뱃지 스프라이트 부착
-    const labelSprite = this.createTargetLabelSprite(keyword, points, cfg.scale);
-    group.add(labelSprite);
-
-    const basePos = new THREE.Vector3(...data.basePos);
-    group.position.copy(basePos);
-
-    const targetObj: TargetObject = {
+    this.addTarget({
       id: data.id,
-      mesh: group,
       shape: data.shape || this.currentShape,
       keyword,
       points,
-      basePos,
+      basePos: new THREE.Vector3(...data.basePos),
       velocity: new THREE.Vector3(...data.velocity),
       frequency: data.frequency,
       amplitude: data.amplitude,
-      timeAlive: 0,
-      isHit: false,
-      hitProgress: 0,
-      subMeshesToRotate,
-      labelSprite,
-    };
-
-    this.targetsGroup.add(group);
-    this.activeTargets.push(targetObj);
+    });
   }
 
-  /** 표적 제거 시 WebGL Geometry 및 Material 즉시 해제 (GPU VRAM 누수 차단) */
+  /** 표적 제거 (지오메트리·재질·텍스처는 모든 표적이 공유하므로 여기서 해제하지 않음) */
   private disposeTarget(t: TargetObject) {
     this.targetsGroup.remove(t.mesh);
-    t.mesh.traverse((child) => {
-      // 스프라이트는 캐시된 공유 머티리얼을 사용하므로 메시만 분리하고 머티리얼은 유지
-      if (child instanceof THREE.Mesh) {
-        if (child.geometry) {
-          child.geometry.dispose();
-        }
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach((m) => m.dispose());
-          } else {
-            child.material.dispose();
-          }
-        }
-      }
-    });
   }
 
   private clearAllTargets() {
@@ -1467,19 +1332,18 @@ export class ShootingArenaEngine {
     if (myStats.ammo <= 0) {
       this.soundManager.playEmpty();
       this.voiceManager.speak('AMMO_EMPTY');
+      this.vibrate('empty');
       return;
     }
 
     myStats.ammo -= 1;
     this.recordShot(slot);
     this.soundManager.playFire();
-
-    localBlaster.muzzleFlash.intensity = 15;
-    localBlaster.muzzleTimer = 0.08;
     localBlaster.recoilOffset = 0.05;
 
     this.inputManager.sendFireEvent(slot);
 
+    // 사격 판정 광선은 블래스터 원점에서 앞(-Z)으로 (예전과 같음)
     const muzzleWorldPos = new THREE.Vector3();
     const muzzleWorldQuat = new THREE.Quaternion();
     localBlaster.group.getWorldPosition(muzzleWorldPos);
@@ -1488,20 +1352,18 @@ export class ShootingArenaEngine {
 
     const playerColor = teamColor(slot);
     const hit = this.raycastTargets(muzzleWorldPos, muzzleForward);
+    // 빔은 총구 끝에서 맞은 곳까지 바로 이어지고, 폭발도 같은 순간에 보임
+    this.showShot(localBlaster, muzzleForward, playerColor, hit ? hit.point : null);
 
     if (hit) {
-      // 발사 즉시 시각적 3D 레이저 볼트 발사 (표적까지의 궤적 형성)
-      this.spawnLaserBolt(muzzleWorldPos, muzzleForward, playerColor, hit.distance);
-
       // 폭발·효과음은 바로 보여주고, 점수와 명중 기록은 서버 확정(서버 경기) 또는 즉시(로컬 경기) 반영
       hit.target.isHit = true;
       this.soundManager.playHit();
-      const hitColor = hit.target.points === 2 ? PALETTE.gold : playerColor;
-      this.createExplosion(hit.point, hitColor);
+      this.showHit(hit.target, hit.point, playerColor);
+      this.vibrate(hit.target.points === 2 ? 'hitBonus' : 'hit');
       this.applyHitResult(slot, hit.target, hit.point);
     } else {
-      // 빗맞힌 사격: 전방 55m 깊은 공간으로 레이저 볼트 비행
-      this.spawnLaserBolt(muzzleWorldPos, muzzleForward, playerColor, 55);
+      this.vibrate('fire');
       this.recordMiss(slot);
     }
 
@@ -1509,31 +1371,50 @@ export class ShootingArenaEngine {
     this.notifyVersusStats();
   }
 
-  /** 총구 광선과 처음 만나는 (아직 맞지 않은) 표적 */
+  /** 총구 광선과 처음 만나는 (아직 맞지 않은) 표적 - 판정 메시(예전 모양)만 검사 */
   private raycastTargets(
     origin: THREE.Vector3,
     direction: THREE.Vector3
   ): { target: TargetObject; point: THREE.Vector3; distance: number } | null {
     this.raycaster.set(origin, direction);
 
-    const targetMeshes: THREE.Object3D[] = [];
-    const targetMap = new Map<THREE.Object3D, TargetObject>();
-    this.activeTargets.forEach((t) => {
-      if (!t.isHit) {
-        t.mesh.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            targetMeshes.push(child);
-            targetMap.set(child, t);
-          }
-        });
+    let best: TargetObject | null = null;
+    let bestHit: THREE.Intersection | null = null;
+    for (const t of this.activeTargets) {
+      if (t.isHit || t.despawn >= 0) continue;
+      this.raycastHits.length = 0;
+      this.raycaster.intersectObjects(t.hitMeshes, false, this.raycastHits);
+      const h = this.raycastHits[0];
+      if (h && (!bestHit || h.distance < bestHit.distance)) {
+        best = t;
+        bestHit = h;
       }
-    });
+    }
+    this.raycastHits.length = 0;
+    if (!best || !bestHit) return null;
+    return { target: best, point: bestHit.point, distance: bestHit.distance };
+  }
 
-    const intersects = this.raycaster.intersectObjects(targetMeshes, false);
-    if (intersects.length === 0) return null;
-    const target = targetMap.get(intersects[0].object);
-    if (!target) return null;
-    return { target, point: intersects[0].point, distance: intersects[0].distance };
+  /** 총구 섬광 + 히트스캔 빔 (총구 끝에서 맞은 곳, 빗나가면 먼 곳까지) */
+  private showShot(blaster: BlasterRig, forward: THREE.Vector3, color: number, hitPoint: THREE.Vector3 | null) {
+    blaster.group.localToWorld(this._muzzle.copy(MUZZLE_LOCAL));
+    if (hitPoint) this._beamEnd.copy(hitPoint);
+    else this._beamEnd.copy(this._muzzle).addScaledVector(forward, MISS_BEAM_LENGTH);
+    this.effects.muzzle(this._muzzle, color);
+    this.effects.beam(this._muzzle, this._beamEnd, color);
+  }
+
+  /** 명중 효과: 폭발(2점은 금색) + 점수 팝업 */
+  private showHit(target: TargetObject, point: THREE.Vector3, color: number) {
+    const s = this.difficultyConfigs[this.currentDifficulty].scale;
+    this.effects.burst(point, color, target.points, s);
+    this.effects.popup(point, target.keyword, target.points, this.camera);
+  }
+
+  /** 총을 든 손 컨트롤러 진동 (VR 중일 때만) */
+  private vibrate(pattern: HapticPattern) {
+    if (!this.renderer.xr.isPresenting || !this.activeController) return;
+    this.haptics.play(this.activeController.userData.inputSource as XRInputSource | undefined, pattern);
   }
 
   /** 명중 반영: 서버 경기는 서버 확정을 요청하고, 로컬 경기(또는 전송 실패)는 바로 기록 */
@@ -1569,85 +1450,6 @@ export class ShootingArenaEngine {
     this.reloadTimer = 1.2;
     this.soundManager.playReload();
     this.notifyStats();
-  }
-
-  private createExplosion(pos: THREE.Vector3, primaryColor: number = PALETTE.p1) {
-    const particleCount = 20;
-    const colors = [primaryColor, PALETTE.gold, 0xffffff];
-
-    for (let i = 0; i < particleCount; i++) {
-      const size = 0.04 + Math.random() * 0.08;
-      // 단일 공유 BoxGeometry(1, 1, 1) 사용 및 스케일 제어 (VRAM 누수 0)
-      const mat = new THREE.MeshBasicMaterial({
-        color: colors[Math.floor(Math.random() * colors.length)],
-        transparent: true,
-        opacity: 1,
-      });
-      const pMesh = new THREE.Mesh(this.sharedParticleGeo, mat);
-      pMesh.scale.setScalar(size);
-      pMesh.position.copy(pos);
-
-      const vel = new THREE.Vector3(
-        (Math.random() - 0.5) * 8,
-        (Math.random() - 0.5) * 8 + 2,
-        (Math.random() - 0.5) * 8
-      );
-
-      this.scene.add(pMesh);
-      this.particles.push({
-        mesh: pMesh,
-        velocity: vel,
-        lifetime: 0,
-        maxLife: 0.6 + Math.random() * 0.4,
-      });
-    }
-  }
-
-  /** 화려한 3D 네온 레이저 볼트 생성 */
-  private spawnLaserBolt(
-    startPos: THREE.Vector3,
-    direction: THREE.Vector3,
-    color: number,
-    maxDistance: number = 60,
-    targetHit?: { target: TargetObject; point: THREE.Vector3; color: number }
-  ) {
-    const boltGroup = new THREE.Group();
-
-    // 1. 고휘도 화이트 코어 실린더
-    const coreGeo = new THREE.CylinderGeometry(0.018, 0.018, 1.4, 8);
-    coreGeo.rotateX(Math.PI / 2);
-    const coreMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-    });
-    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    boltGroup.add(coreMesh);
-
-    // 2. 외곽 가산 발광 네온 헤일로 (Cyan / Magenta)
-    const haloGeo = new THREE.CylinderGeometry(0.065, 0.065, 1.6, 8);
-    haloGeo.rotateX(Math.PI / 2);
-    const haloMat = new THREE.MeshBasicMaterial({
-      color: color,
-      transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
-    });
-    const haloMesh = new THREE.Mesh(haloGeo, haloMat);
-    boltGroup.add(haloMesh);
-
-    boltGroup.position.copy(startPos);
-    boltGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), direction.clone().normalize());
-
-    this.scene.add(boltGroup);
-
-    this.laserBolts.push({
-      mesh: boltGroup,
-      direction: direction.clone().normalize(),
-      speed: 120,
-      distanceTraveled: 0,
-      maxDistance,
-      color,
-      targetHit,
-    });
   }
 
   /** 이 클라이언트가 표적 생성 권한을 가졌는지 (서버 경기: 1P 우선, 1P가 없으면 2P / 로컬 경기: 항상) */
@@ -1955,6 +1757,15 @@ export class ShootingArenaEngine {
     this.matchEndWaitTimer = 0;
     this.matchClockEndsAt = null;
     this.vrExitHoldTimer = 0;
+    // 남은 표적은 0.4초 동안 사라짐 (결과 화면에서 경기장이 깔끔하게)
+    const scale = this.difficultyConfigs[this.currentDifficulty].scale;
+    for (const t of this.activeTargets) {
+      if (!t.isHit && t.despawn < 0) {
+        t.despawn = 0;
+        t.labelSprite.visible = false;
+        this.effects.poof(t.mesh.position, targetGlowColor(t.points), scale);
+      }
+    }
     this.updateVRPrompt(true, winner);
     if (this.vrPromptMesh) {
       // VR 플레이어 정면에 결과판 표시 (다시 시작 / VR 종료 안내)
@@ -1971,6 +1782,7 @@ export class ShootingArenaEngine {
       this.voiceManager.speak('GAME_OVER');
     } else if (amWinner) {
       this.voiceManager.speak('VICTORY');
+      this.vibrate('victory');
     } else if (winner !== 'DRAW') {
       this.voiceManager.speak('DEFEAT');
     } else {
@@ -1999,8 +1811,6 @@ export class ShootingArenaEngine {
     rivalHead.quaternion.slerp(rivalBlaster.group.quaternion, Math.min(1.0, delta * 12));
     if (!aiAction.fire) return;
 
-    rivalBlaster.muzzleFlash.intensity = 15;
-    rivalBlaster.muzzleTimer = 0.08;
     rivalBlaster.recoilOffset = 0.08;
     this.soundManager.playFire();
     this.recordShot(aiSlot);
@@ -2016,18 +1826,16 @@ export class ShootingArenaEngine {
     const aiForward = new THREE.Vector3(0, 0, -1).applyQuaternion(aiMuzzleQuat).normalize();
     const aiColor = teamColor(aiSlot);
     const hit = this.raycastTargets(aiMuzzlePos, aiForward);
+    this.showShot(rivalBlaster, aiForward, aiColor, hit ? hit.point : null);
 
     if (hit) {
-      // AI 발사 시 레이저 볼트 발사
-      this.spawnLaserBolt(aiMuzzlePos, aiForward, aiColor, hit.distance);
       hit.target.isHit = true;
-      this.createExplosion(hit.point, aiColor);
+      this.showHit(hit.target, hit.point, aiColor);
       this.soundManager.playHit();
       this.cyberAI.recordHit(hit.target.points);
       this.applyHitResult(aiSlot, hit.target, hit.point);
     } else {
       // 사격 조준이 표적과 일치하지 않아 빗맞힘 처리 (치팅 방지)
-      this.spawnLaserBolt(aiMuzzlePos, aiForward, aiColor, 55);
       this.cyberAI.recordMiss();
       this.recordMiss(aiSlot);
     }
@@ -2058,6 +1866,7 @@ export class ShootingArenaEngine {
           myStats.isReloading = false;
           myStats.ammo = myStats.maxAmmo;
           this.voiceManager.speak('RELOAD_DONE');
+          this.vibrate('reloadDone');
           this.notifyStats();
         }
       }
@@ -2067,6 +1876,7 @@ export class ShootingArenaEngine {
         this.hasWarned10s = true;
         this.soundManager.play10sWarningSiren();
         this.voiceManager.speak('TIME_WARN_10S');
+        this.vibrate('warning');
       }
 
       if (this.roundTimer <= 0) {
@@ -2220,12 +2030,8 @@ export class ShootingArenaEngine {
       this.spectatorCam.update(delta, this._tempVec1, this._tempVec2);
     }
 
-    // 4. 총구 화염 및 반동 회복
+    // 4. 반동 회복
     [this.p1Blaster, this.p2Blaster].forEach((b) => {
-      if (b.muzzleTimer > 0) {
-        b.muzzleTimer -= delta;
-        if (b.muzzleTimer <= 0) b.muzzleFlash.intensity = 0;
-      }
       if (b.recoilOffset > 0) {
         b.recoilOffset = Math.max(0, b.recoilOffset - delta * 0.4);
       }
@@ -2238,10 +2044,13 @@ export class ShootingArenaEngine {
       b.laserDot.lookAt(this._tempVec1);
     });
 
-    // 5. 표적 이동 및 애니메이션
+    // 5. 표적 이동 및 애니메이션 (일시정지 중에는 표적·프로펠러가 멈춤)
+    const frozen = this.isPlaying && this.isPaused;
+    const targetDt = frozen ? 0 : delta;
+    if (!frozen) this.drones.update(delta);
+    this.camera.getWorldPosition(this._camWorld);
     for (let i = this.activeTargets.length - 1; i >= 0; i--) {
       const t = this.activeTargets[i];
-      t.timeAlive += delta;
 
       if (t.isHit) {
         t.hitProgress += delta * 4;
@@ -2250,65 +2059,64 @@ export class ShootingArenaEngine {
         if (t.hitProgress >= 1) {
           this.disposeTarget(t);
           this.activeTargets.splice(i, 1);
-          continue;
         }
-      } else {
+        continue;
+      }
+
+      if (t.despawn >= 0) {
+        // 경기가 끝나 사라지는 중 (맞힌 것으로 치지 않음)
+        t.despawn += delta / TARGET_DESPAWN_TIME;
+        const k = Math.max(0, 1 - t.despawn);
+        t.visual.scale.setScalar(Math.max(0.001, k * k));
+        t.visual.rotation.y += delta * 9;
+        if (t.despawn >= 1) {
+          this.disposeTarget(t);
+          this.activeTargets.splice(i, 1);
+        }
+        continue;
+      }
+
+      if (targetDt > 0) {
+        // 이동·회전 계산은 예전과 같음 (모든 화면에서 같은 위치)
+        t.timeAlive += targetDt;
         t.mesh.position.x = t.basePos.x + Math.sin(t.timeAlive * t.frequency) * t.amplitude;
         t.mesh.position.y = t.basePos.y + Math.cos(t.timeAlive * (t.frequency * 0.8)) * 0.4;
         if (Math.abs(t.basePos.x) > 9) {
           t.velocity.x *= -1;
         }
-        t.basePos.x += t.velocity.x * delta;
+        t.basePos.x += t.velocity.x * targetDt;
+        HitProxyFactory.spin(t.spinners, targetDt);
 
-        if (t.subMeshesToRotate) {
-          t.subMeshesToRotate.forEach((m) => {
-            m.rotation.y += delta * 15;
-            m.rotation.z += delta * 8;
-          });
+        // 등장 연출 (겉모습만)
+        if (t.spawnAge < TARGET_SPAWN_TIME) {
+          t.spawnAge = Math.min(TARGET_SPAWN_TIME, t.spawnAge + targetDt);
+          t.visual.scale.setScalar(Math.max(0.001, easeOutBack(t.spawnAge / TARGET_SPAWN_TIME)));
+        }
+        // 드론은 옆으로 움직이는 방향으로 살짝 기울어짐
+        if (t.banks) {
+          const vx = t.velocity.x + t.amplitude * t.frequency * Math.cos(t.timeAlive * t.frequency);
+          const bank = THREE.MathUtils.clamp(-vx * 0.05, -0.32, 0.32);
+          t.visual.rotation.z += (bank - t.visual.rotation.z) * Math.min(1, targetDt * 6);
         }
       }
-    }
 
-    // 6. 폭발 파티클 업데이트 (수명 완료 시 Material 즉시 dispose)
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
-      p.lifetime += delta;
-      p.mesh.position.addScaledVector(p.velocity, delta);
-      p.velocity.y -= delta * 9.8;
-      const alpha = Math.max(0, 1 - p.lifetime / p.maxLife);
-      (p.mesh.material as THREE.MeshBasicMaterial).opacity = alpha;
-
-      if (p.lifetime >= p.maxLife) {
-        this.scene.remove(p.mesh);
-        (p.mesh.material as THREE.Material).dispose();
-        this.particles.splice(i, 1);
+      // 판정 메시 회전을 따라가는 장식 (큐브·원반·구체 고리)
+      for (let k = 0; k < t.visualSpinners.length; k++) {
+        const v = t.visualSpinners[k];
+        if (v) v.quaternion.copy(t.spinners[k].quaternion);
       }
+
+      // 라벨: 멀리 있는 표적일수록 조금 크게 (먼 표적의 키워드도 읽히게)
+      const grow = THREE.MathUtils.clamp(t.mesh.position.distanceTo(this._camWorld) / 16, 0.9, 1.7);
+      const appear = t.spawnAge / TARGET_SPAWN_TIME;
+      const k = grow * appear;
+      t.labelSprite.visible = k > 0.05;
+      t.labelSprite.scale.set(t.labelBase.x * k, t.labelBase.y * k, 1);
+      t.labelSprite.position.y = t.labelTop + (t.labelBase.y * k) / 2 + 0.04;
     }
 
-    // 6.5. 3D 레이저 볼트 비행 및 명중 업데이트
-    for (let i = this.laserBolts.length - 1; i >= 0; i--) {
-      const bolt = this.laserBolts[i];
-      const step = bolt.speed * delta;
-      bolt.distanceTraveled += step;
-      bolt.mesh.position.addScaledVector(bolt.direction, step);
-
-      if (bolt.distanceTraveled >= bolt.maxDistance) {
-        if (bolt.targetHit && !bolt.targetHit.target.isHit) {
-          bolt.targetHit.target.isHit = true;
-          this.createExplosion(bolt.targetHit.point, bolt.targetHit.color);
-          this.soundManager.playHit();
-        }
-        this.scene.remove(bolt.mesh);
-        bolt.mesh.traverse((c) => {
-          if (c instanceof THREE.Mesh) {
-            c.geometry.dispose();
-            if (Array.isArray(c.material)) c.material.forEach((m) => m.dispose());
-            else c.material.dispose();
-          }
-        });
-        this.laserBolts.splice(i, 1);
-      }
-    }
+    // 6. 사격·명중 효과 (빔·불꽃·파편·점수 팝업)
+    this.effects.update(delta, this.camera);
 
     // 7. 렌더
     this.renderer.render(this.scene, this.camera);
@@ -2384,11 +2192,9 @@ export class ShootingArenaEngine {
     let best: TargetObject | null = null;
     let bestDistance = Infinity;
     for (const t of this.activeTargets) {
-      if (t.isHit) continue;
-      this.aimMeshes.length = 0;
-      t.mesh.traverse(this.collectAimMesh);
+      if (t.isHit || t.despawn >= 0) continue;
       this.aimHits.length = 0;
-      this.aimRaycaster.intersectObjects(this.aimMeshes, false, this.aimHits);
+      this.aimRaycaster.intersectObjects(t.hitMeshes, false, this.aimHits);
       const hit = this.aimHits[0];
       if (hit && hit.distance < bestDistance) {
         bestDistance = hit.distance;
@@ -2396,7 +2202,6 @@ export class ShootingArenaEngine {
         this.aimPoint.copy(hit.point);
       }
     }
-    this.aimMeshes.length = 0;
     this.aimHits.length = 0;
     if (!best) {
       this.aimPoint.copy(this.aimOrigin).addScaledVector(this.aimDir, 30);
@@ -2413,6 +2218,7 @@ export class ShootingArenaEngine {
 
   public dispose() {
     this.disposed = true;
+    if (this.warmUpTimer) clearTimeout(this.warmUpTimer);
     // 소리 관리자는 앱 전체가 함께 쓰므로 시연 중 꺼 둔 소리를 되살려 둠
     this.setDemoActive(false);
     if (this.pendingStartTimer) {
@@ -2426,36 +2232,12 @@ export class ShootingArenaEngine {
       this.renderer.domElement.removeEventListener('pointerdown', this.onCanvasPointerDown);
     }
 
-    // 1. 레이저 볼트 정리
-    this.laserBolts.forEach((b) => {
-      this.scene.remove(b.mesh);
-      b.mesh.traverse((c) => {
-        if (c instanceof THREE.Mesh) {
-          c.geometry.dispose();
-          if (Array.isArray(c.material)) c.material.forEach((m) => m.dispose());
-          else c.material.dispose();
-        }
-      });
-    });
-    this.laserBolts = [];
-
-    // 2. 파티클 및 공유 지오메트리 정리
-    this.particles.forEach((p) => {
-      this.scene.remove(p.mesh);
-      (p.mesh.material as THREE.Material).dispose();
-    });
-    this.particles = [];
-    this.sharedParticleGeo.dispose();
-
-    // 3. 표적 전체 정리 및 GPU 메모리 해제
+    // 1~4. 표적·효과와 공유 지오메트리·재질·라벨 텍스처 해제
     this.clearAllTargets();
-
-    // 4. 캐시된 라벨 텍스처 및 머티리얼 일괄 해제
-    this.targetLabelCache.forEach((item) => {
-      item.material.dispose();
-      item.texture.dispose();
-    });
-    this.targetLabelCache.clear();
+    this.effects.dispose();
+    this.drones.dispose();
+    this.labels.dispose();
+    this.haptics.dispose();
 
     // 5. 블래스터 텍스처 및 지오메트리 해제
     [this.p1Blaster, this.p2Blaster].forEach((b) => {
@@ -2494,4 +2276,11 @@ export class ShootingArenaEngine {
     }
     this.renderer.dispose();
   }
+}
+
+/** 살짝 지나쳤다 돌아오는 등장 곡선 (0→1) */
+function easeOutBack(x: number): number {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
 }
