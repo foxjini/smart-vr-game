@@ -22,6 +22,9 @@ import { InputManager } from '@/core/input/InputManager';
 import { CyberAIRival, TargetObjectRef } from '@/core/ai/CyberAIRival';
 import { SpectatorCameraController } from '@/core/spectator/SpectatorCameraController';
 import { PerfPanel } from './visual/debug/PerfPanel';
+import { PALETTE, teamColor, cssColor, cssRgba } from './visual/palette';
+import { configureRenderer, createEnvironmentMap, requestTargetFrameRate, asCanvasTexture } from './visual/renderSetup';
+import { FONT_UI, FONT_NUM, loadCanvasFonts } from './visual/fonts';
 
 export const TARGET_KEYWORDS: TargetKeyword[] = ['정보', '통신', '제어', '회로', '인공', '전자'];
 
@@ -88,6 +91,8 @@ interface BlasterRig {
   recoilOffset: number;
   primaryColor: number;
   nameTag: string;
+  /** 마지막으로 그린 OLED 내용 (같으면 다시 그리지 않음) */
+  displayKey: string;
 }
 
 export class ShootingArenaEngine {
@@ -180,7 +185,12 @@ export class ShootingArenaEngine {
   private vrButtonElement?: HTMLElement;
 
   // WebGL 자원 최적화 캐시 & 공유 객체 (Quest 2 VRAM 누수 원천 차단)
-  private targetLabelCache: Map<TargetKeyword, { texture: THREE.CanvasTexture; material: THREE.SpriteMaterial }> = new Map();
+  private targetLabelCache: Map<TargetKeyword, { texture: THREE.CanvasTexture; material: THREE.SpriteMaterial; points: number }> = new Map();
+  /** 금속 재질 반사용 환경맵 */
+  private envMap?: THREE.Texture;
+  /** 결과판에 마지막으로 그린 상태 (폰트를 불러온 뒤 같은 내용으로 다시 그리기 위함) */
+  private vrPromptState: { isGameOver: boolean; winner?: string } = { isGameOver: false };
+  private disposed = false;
   private sharedParticleGeo = new THREE.BoxGeometry(1, 1, 1);
 
   // 성능 최적화 타이머 (초당 수십회 불필요한 GPU 업로드 & React 리렌더링 방지)
@@ -247,11 +257,11 @@ export class ShootingArenaEngine {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    configureRenderer(this.renderer);
     this.renderer.xr.enabled = true;
 
     this.renderer.xr.addEventListener('sessionstart', () => {
+      requestTargetFrameRate(this.renderer.xr.getSession());
       this.startGame();
     });
     this.renderer.xr.addEventListener('sessionend', () => {
@@ -261,6 +271,11 @@ export class ShootingArenaEngine {
     });
 
     container.appendChild(this.renderer.domElement);
+
+    // 금속 재질이 은은하게 반사하도록 환경맵 적용
+    this.envMap = createEnvironmentMap(this.renderer);
+    this.scene.environment = this.envMap;
+    this.scene.environmentIntensity = 0.5;
 
     // 3. 그룹 초기화
     this.themeGroup = new THREE.Group();
@@ -277,6 +292,11 @@ export class ShootingArenaEngine {
     this.initVRControllers();
     this.initNetworkListeners();
     this.applyRoleLayout();
+
+    // 캔버스 글자는 웹 폰트를 불러온 뒤 다시 그림 (불러오기 전에는 기본 글꼴로 그려짐)
+    loadCanvasFonts().then(() => {
+      if (!this.disposed) this.refreshCanvasTextures();
+    });
 
     // 5. 입력 바인딩
     this.inputManager.onFireCallback = () => this.handleFire();
@@ -362,8 +382,7 @@ export class ShootingArenaEngine {
       blaster.group.getWorldPosition(muzzlePos);
       blaster.group.getWorldQuaternion(muzzleQuat);
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(muzzleQuat).normalize();
-      const color = shooter === 1 ? 0x00f0ff : 0xff0055;
-      this.spawnLaserBolt(muzzlePos, forward, color, 55);
+      this.spawnLaserBolt(muzzlePos, forward, teamColor(shooter), 55);
 
       // 상대 선수의 발사 수를 세어 명중률 계산 (결과 비교 카드용)
       if (this.isPlaying && this.matchId !== null) {
@@ -385,8 +404,7 @@ export class ShootingArenaEngine {
       const targetObj = this.activeTargets.find((t) => t.id === data.targetId);
       if (targetObj && !targetObj.isHit) {
         targetObj.isHit = true;
-        const color = slot === 1 ? 0x00f0ff : 0xff0055;
-        this.createExplosion(new THREE.Vector3(...data.hitPoint), color);
+        this.createExplosion(new THREE.Vector3(...data.hitPoint), teamColor(slot));
         this.soundManager.playHit();
       }
 
@@ -610,11 +628,11 @@ export class ShootingArenaEngine {
 
   /** 1P(Cyan) 및 2P(Magenta) 듀얼 블래스터 절차적 구축 */
   private buildDualBlasters() {
-    this.p1Blaster = this.createBlasterRig(0x00f0ff, 'PLAYER 1 (CYAN)');
+    this.p1Blaster = this.createBlasterRig(teamColor(1), 'PLAYER 1 (CYAN)');
     this.p1Blaster.group.position.set(-0.35, 1.35, -0.45);
     this.scene.add(this.p1Blaster.group);
 
-    this.p2Blaster = this.createBlasterRig(0xff0055, 'PLAYER 2 / AI (MAGENTA)');
+    this.p2Blaster = this.createBlasterRig(teamColor(2), 'PLAYER 2 / AI (MAGENTA)');
     this.p2Blaster.group.position.set(0.35, 1.35, -0.45);
     this.scene.add(this.p2Blaster.group);
   }
@@ -695,9 +713,10 @@ export class ShootingArenaEngine {
     canvas.height = 256;
     const ctx = canvas.getContext('2d')!;
 
-    const texture = new THREE.CanvasTexture(canvas);
+    const texture = asCanvasTexture(canvas);
     const geo = new THREE.PlaneGeometry(0.1, 0.05);
-    const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+    // 화면 글자는 그린 색 그대로 보이도록 tone mapping 제외
+    const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, toneMapped: false });
     const displayMesh = new THREE.Mesh(geo, mat);
     displayMesh.position.set(0, 0.09, -0.04);
     displayMesh.rotation.set(-0.35, 0, 0); // Y축 반전 없이 앞면 정렬
@@ -716,17 +735,18 @@ export class ShootingArenaEngine {
       recoilOffset: 0,
       primaryColor,
       nameTag,
+      displayKey: '',
     };
   }
 
   /** 원격 플레이어용 3D VR 바이저 헤드 아바타 구축 */
   private buildVRHeadAvatars() {
-    this.p1Head = this.createVRHeadMesh(0x00f0ff, 'P1: CYAN');
+    this.p1Head = this.createVRHeadMesh(teamColor(1), 'P1: CYAN');
     this.p1Head.position.set(-0.35, 1.6, 0);
     this.p1Head.visible = this.clientRole === 'SPECTATOR';
     this.scene.add(this.p1Head);
 
-    this.p2Head = this.createVRHeadMesh(0xff0055, 'P2: MAGENTA');
+    this.p2Head = this.createVRHeadMesh(teamColor(2), 'P2: MAGENTA');
     this.p2Head.position.set(0.35, 1.6, 0);
     this.p2Head.visible = true;
     this.scene.add(this.p2Head);
@@ -764,9 +784,9 @@ export class ShootingArenaEngine {
 
     this.drawPromptContent(ctx, canvas.width, canvas.height, false);
 
-    const texture = new THREE.CanvasTexture(canvas);
+    const texture = asCanvasTexture(canvas);
     const geo = new THREE.PlaneGeometry(2.6, 1.62);
-    const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+    const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, toneMapped: false });
     this.vrPromptMesh = new THREE.Mesh(geo, mat);
     this.vrPromptMesh.position.set(0, 1.6, -2.5);
     this.vrPromptMesh.visible = false; // 메뉴 UI와의 중복 겹침 방지 (게임 종료 시 결과판으로만 활성화)
@@ -789,13 +809,13 @@ export class ShootingArenaEngine {
       ctx.beginPath();
       ctx.roundRect(10, 10, w - 20, h - 20, 28);
       ctx.fill();
-      ctx.strokeStyle = '#00f0ff';
+      ctx.strokeStyle = cssColor(PALETTE.p1);
       ctx.lineWidth = 6;
       ctx.stroke();
 
       // 상단 타이틀
-      ctx.fillStyle = '#ffe600';
-      ctx.font = 'bold 32px monospace';
+      ctx.fillStyle = cssColor(PALETTE.gold);
+      ctx.font = `700 34px ${FONT_NUM}`;
       ctx.textAlign = 'center';
       ctx.fillText('1:1 VERSUS ARENA DEBRIEF', w / 2, 65);
 
@@ -812,62 +832,69 @@ export class ShootingArenaEngine {
       } else if (winner === 'P2') {
         winText = '🏆 PLAYER 2 (MAGENTA) WINS!';
       }
-      ctx.fillStyle = ABORT_REASONS.includes(winner ?? '') ? '#ff0055' : winner === 'P1' ? '#00f0ff' : winner === 'P2' ? '#ff0055' : '#ffffff';
-      ctx.font = '900 46px sans-serif';
+      const winColor = ABORT_REASONS.includes(winner ?? '')
+        ? PALETTE.danger
+        : winner === 'P1'
+          ? PALETTE.p1
+          : winner === 'P2'
+            ? PALETTE.p2
+            : PALETTE.fg;
+      ctx.fillStyle = cssColor(winColor);
+      ctx.font = `800 46px ${FONT_UI}`;
       ctx.fillText(winText, w / 2, 130);
 
       // 좌측 P1 스탯 박스
-      ctx.fillStyle = 'rgba(0, 240, 255, 0.12)';
+      ctx.fillStyle = cssRgba(PALETTE.p1, 0.12);
       ctx.beginPath();
       ctx.roundRect(40, 160, 440, 380, 20);
       ctx.fill();
-      ctx.strokeStyle = '#00f0ff';
+      ctx.strokeStyle = cssColor(PALETTE.p1);
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      ctx.fillStyle = '#00f0ff';
-      ctx.font = '900 36px monospace';
+      ctx.fillStyle = cssColor(PALETTE.p1);
+      ctx.font = `800 36px ${FONT_UI}`;
       ctx.fillText('플레이어 1 (시안)', 260, 215);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 50px monospace';
+      ctx.font = `700 56px ${FONT_NUM}`;
       ctx.fillText(`${this.stats.score.toLocaleString()} PTS`, 260, 285);
 
-      ctx.font = '24px monospace';
-      ctx.fillStyle = '#94a3b8';
+      ctx.font = `500 24px ${FONT_UI}`;
+      ctx.fillStyle = cssColor(PALETTE.fg2);
       ctx.fillText(`명중: ${this.stats.hits}회 / 명중률: ${this.stats.accuracy}%`, 260, 360);
       ctx.fillText(`최대 콤보: ${this.stats.maxCombo}x`, 260, 410);
 
       // 우측 P2 스탯 박스
-      ctx.fillStyle = 'rgba(255, 0, 85, 0.12)';
+      ctx.fillStyle = cssRgba(PALETTE.p2, 0.12);
       ctx.beginPath();
-      ctx.roundRect(540, 160, 440, 380, 4);
+      ctx.roundRect(540, 160, 440, 380, 20);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 0, 85, 0.5)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = cssColor(PALETTE.p2);
+      ctx.lineWidth = 3;
       ctx.stroke();
 
-      ctx.fillStyle = '#ff0055';
-      ctx.font = '900 36px monospace';
+      ctx.fillStyle = cssColor(PALETTE.p2);
+      ctx.font = `800 36px ${FONT_UI}`;
       const p2Title = this.inputManager.isP2Connected ? '플레이어 2 (마젠타)' : '사이버 AI 라이벌';
       ctx.fillText(p2Title, 760, 215);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 50px monospace';
+      ctx.font = `700 56px ${FONT_NUM}`;
       ctx.fillText(`${this.p2Stats.score.toLocaleString()} PTS`, 760, 285);
 
-      ctx.font = '24px monospace';
-      ctx.fillStyle = '#94a3b8';
+      ctx.font = `500 24px ${FONT_UI}`;
+      ctx.fillStyle = cssColor(PALETTE.fg2);
       ctx.fillText(`명중: ${this.p2Stats.hits}회 / 명중률: ${this.p2Stats.accuracy}%`, 760, 360);
       ctx.fillText(`최대 콤보: ${this.p2Stats.maxCombo}x`, 760, 410);
 
       // 하단 안내: 2대 명확한 선택지 제공
-      ctx.fillStyle = '#00ffaa';
-      ctx.font = 'bold 24px sans-serif';
+      ctx.fillStyle = cssColor(PALETTE.ok);
+      ctx.font = `700 24px ${FONT_UI}`;
       ctx.fillText('🔫 [트리거 방아쇠] : VR 모드 유지하고 다시 시작', w / 2, 570);
 
-      ctx.fillStyle = '#ffaa00';
-      ctx.font = 'bold 22px sans-serif';
+      ctx.fillStyle = cssColor(PALETTE.warn);
+      ctx.font = `700 22px ${FONT_UI}`;
       ctx.fillText('🚪 [그립 / 메뉴 버튼] : VR 종료하고 웹 메인 화면 복귀', w / 2, 615);
     } else {
       // 2. 대기 상태 안내판 (1px 투명 HUD 스타일)
@@ -875,12 +902,12 @@ export class ShootingArenaEngine {
       ctx.beginPath();
       ctx.roundRect(10, 10, w - 20, h - 20, 4);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.35)';
+      ctx.strokeStyle = cssRgba(PALETTE.p1, 0.35);
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
       // 코너 테크 마커 틱
-      ctx.strokeStyle = '#00f0ff';
+      ctx.strokeStyle = cssColor(PALETTE.p1);
       ctx.lineWidth = 2;
       const tick = 16;
       ctx.beginPath();
@@ -891,32 +918,33 @@ export class ShootingArenaEngine {
       ctx.stroke();
 
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#00f0ff';
-      ctx.font = 'bold 26px monospace';
+      ctx.fillStyle = cssColor(PALETTE.p1);
+      ctx.font = `700 26px ${FONT_UI}`;
       ctx.fillText('// 경기장 출격 대기 // 1:1 사격 매트릭스', w / 2, 90);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 46px monospace';
+      ctx.font = `700 52px ${FONT_NUM}`;
       ctx.fillText('CYBER STRIKE ARENA', w / 2, 170);
 
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '22px monospace';
+      ctx.fillStyle = cssColor(PALETTE.fg2);
+      ctx.font = `500 22px ${FONT_UI}`;
       ctx.fillText('Quest 2 터치: 트리거 [발사] | 그립 [재장전]', w / 2, 250);
 
       const vsModeText = this.inputManager.isP2Connected
         ? '상태: 2P 플레이어 온라인 // PVP 대결 준비 완료'
         : '상태: 2P 미접속 // AI 라이벌 봇 대결 가동';
-      ctx.fillStyle = this.inputManager.isP2Connected ? '#00ffaa' : '#00f0ff';
-      ctx.font = 'bold 24px monospace';
+      ctx.fillStyle = cssColor(this.inputManager.isP2Connected ? PALETTE.ok : PALETTE.p1);
+      ctx.font = `700 24px ${FONT_UI}`;
       ctx.fillText(vsModeText, w / 2, 340);
 
-      ctx.fillStyle = '#00f0ff';
-      ctx.font = 'bold 26px sans-serif';
+      ctx.fillStyle = cssColor(PALETTE.p1);
+      ctx.font = `700 26px ${FONT_UI}`;
       ctx.fillText('🔫 [트리거] : 경기 출격  |  🚪 [그립/메뉴] : VR 종료', w / 2, 470);
     }
   }
 
   private updateVRPrompt(isGameOver: boolean = false, winner?: string) {
+    this.vrPromptState = { isGameOver, winner };
     if (!this.vrPromptMesh) return;
     const mat = this.vrPromptMesh.material as THREE.MeshBasicMaterial;
     const texture = mat.map as THREE.CanvasTexture;
@@ -927,7 +955,7 @@ export class ShootingArenaEngine {
     texture.needsUpdate = true;
   }
 
-  /** 듀얼 OLED 디스플레이 업데이트 */
+  /** 듀얼 OLED 디스플레이 업데이트 (내용이 바뀐 블래스터만 다시 그림) */
   private updateBlasterDisplays() {
     this.renderOLED(this.p1Blaster, this.stats, this.p2Stats, 1);
     this.renderOLED(this.p2Blaster, this.p2Stats, this.stats, 2);
@@ -939,60 +967,73 @@ export class ShootingArenaEngine {
     rivalStats: GameStats,
     playerId: PlayerSlot
   ) {
+    const isWarning = this.isPlaying && this.roundTimer <= 10;
+    const time = String(this.stats.timeRemaining).padStart(2, '0');
+    let mode: 'exit' | 'paused' | 'reload' | 'normal' = 'normal';
+    if (this.vrExitHoldTimer > 0) mode = 'exit';
+    else if (this.isPlaying && this.isPaused) mode = 'paused';
+    else if (myStats.isReloading) mode = 'reload';
+    const exitLeft = mode === 'exit' ? (1.2 - this.vrExitHoldTimer).toFixed(1) : '';
+
+    // 보이는 내용이 그대로면 캔버스 그리기와 텍스처 업로드를 건너뜀
+    const key = `${mode}|${exitLeft}|${time}|${isWarning}|${myStats.score}|${rivalStats.score}|${myStats.ammo}/${myStats.maxAmmo}`;
+    if (key === rig.displayKey) return;
+    rig.displayKey = key;
+
     const ctx = rig.displayCtx;
     const canvas = rig.displayCanvas;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const isWarning = this.isPlaying && this.roundTimer <= 10;
-    const borderColor = isWarning ? '#ff0055' : rig.primaryColor === 0x00f0ff ? '#00f0ff' : '#ff0055';
+    const teamCss = cssColor(rig.primaryColor);
+    const borderColor = isWarning ? cssColor(PALETTE.danger) : teamCss;
 
     // beginPath() 없이 roundRect()를 부르면 호출마다 경로가 쌓여 그리기가 점점 느려짐
-    ctx.fillStyle = isWarning ? 'rgba(40, 5, 15, 0.85)' : 'rgba(4, 8, 18, 0.82)';
+    ctx.fillStyle = isWarning ? 'rgba(40, 8, 14, 0.88)' : 'rgba(7, 11, 20, 0.88)';
     ctx.beginPath();
-    ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, 4);
+    ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, 12);
     ctx.fill();
 
     ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.stroke();
 
     ctx.textAlign = 'center';
 
-    if (this.vrExitHoldTimer > 0) {
-      ctx.fillStyle = '#ff0055';
-      ctx.font = '900 36px monospace';
-      ctx.fillText(`EXIT: ${(1.2 - this.vrExitHoldTimer).toFixed(1)}s`, canvas.width / 2, 105);
-      ctx.fillStyle = '#ffe600';
-      ctx.font = 'bold 22px monospace';
+    if (mode === 'exit') {
+      ctx.fillStyle = cssColor(PALETTE.danger);
+      ctx.font = `700 46px ${FONT_NUM}`;
+      ctx.fillText(`EXIT ${exitLeft}s`, canvas.width / 2, 105);
+      ctx.fillStyle = cssColor(PALETTE.gold);
+      ctx.font = `600 28px ${FONT_NUM}`;
       ctx.fillText('KEEP HOLDING TO QUIT', canvas.width / 2, 185);
-    } else if (this.isPlaying && this.isPaused) {
-      ctx.fillStyle = '#ffe600';
-      ctx.font = '900 44px monospace';
-      ctx.fillText('PAUSED', canvas.width / 2, 105);
-      ctx.fillStyle = '#cbd5e1';
-      ctx.font = 'bold 32px monospace';
-      ctx.fillText(`TIME: ${String(this.stats.timeRemaining).padStart(2, '0')}s`, canvas.width / 2, 185);
-    } else if (myStats.isReloading) {
-      ctx.fillStyle = '#ffaa00';
-      ctx.font = '900 40px monospace';
-      ctx.fillText('RELOADING...', canvas.width / 2, 105);
-      ctx.fillStyle = '#cbd5e1';
-      ctx.font = 'bold 32px monospace';
-      ctx.fillText(`TIME: ${String(this.stats.timeRemaining).padStart(2, '0')}s`, canvas.width / 2, 185);
+    } else if (mode === 'paused') {
+      ctx.fillStyle = cssColor(PALETTE.gold);
+      ctx.font = `700 54px ${FONT_NUM}`;
+      ctx.fillText('PAUSED', canvas.width / 2, 110);
+      ctx.fillStyle = cssColor(PALETTE.fg2);
+      ctx.font = `700 38px ${FONT_NUM}`;
+      ctx.fillText(`TIME ${time}s`, canvas.width / 2, 190);
+    } else if (mode === 'reload') {
+      ctx.fillStyle = cssColor(PALETTE.warn);
+      ctx.font = `700 50px ${FONT_NUM}`;
+      ctx.fillText('RELOADING', canvas.width / 2, 110);
+      ctx.fillStyle = cssColor(PALETTE.fg2);
+      ctx.font = `700 38px ${FONT_NUM}`;
+      ctx.fillText(`TIME ${time}s`, canvas.width / 2, 190);
     } else {
       // 상단: 내 점수 vs 상대방 점수
       ctx.fillStyle = borderColor;
-      ctx.font = 'bold 38px monospace';
-      ctx.fillText(`P${playerId}: ${myStats.score.toLocaleString()}`, canvas.width * 0.32, 90);
+      ctx.font = `700 46px ${FONT_NUM}`;
+      ctx.fillText(`P${playerId} ${myStats.score.toLocaleString()}`, canvas.width * 0.3, 92);
 
-      ctx.fillStyle = '#ffaa00';
-      ctx.font = 'bold 38px monospace';
-      ctx.fillText(`RIVAL: ${rivalStats.score.toLocaleString()}`, canvas.width * 0.72, 90);
+      ctx.fillStyle = cssColor(PALETTE.ai);
+      ctx.font = `700 46px ${FONT_NUM}`;
+      ctx.fillText(`RIVAL ${rivalStats.score.toLocaleString()}`, canvas.width * 0.72, 92);
 
       // 하단: 탄약 및 시간
-      ctx.fillStyle = myStats.ammo <= 2 ? '#ff0055' : '#00f0ff';
-      ctx.font = 'bold 32px monospace';
-      ctx.fillText(`AMMO: ${myStats.ammo}/${myStats.maxAmmo} | TIME: ${String(this.stats.timeRemaining).padStart(2, '0')}s`, canvas.width / 2, 185);
+      ctx.fillStyle = myStats.ammo <= 2 ? cssColor(PALETTE.danger) : teamCss;
+      ctx.font = `700 40px ${FONT_NUM}`;
+      ctx.fillText(`AMMO ${myStats.ammo}/${myStats.maxAmmo}  ·  TIME ${time}s`, canvas.width / 2, 188);
     }
 
     rig.displayTexture.needsUpdate = true;
@@ -1091,6 +1132,32 @@ export class ShootingArenaEngine {
     this.cyberAI.setDifficulty(diff);
   }
 
+  /** 표적 라벨 캔버스에 키워드와 배점을 그림 (웹 폰트를 불러온 뒤 다시 그릴 때도 사용) */
+  private drawTargetLabel(canvas: HTMLCanvasElement, keyword: TargetKeyword, points: number) {
+    const ctx = canvas.getContext('2d')!;
+    const isBonus = points === 2; // 정보, 통신
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 표적은 팀 색과 겹치지 않게: 2점은 금색, 1점은 중립색
+    ctx.fillStyle = isBonus ? 'rgba(28, 22, 4, 0.92)' : 'rgba(12, 20, 36, 0.9)';
+    ctx.beginPath();
+    ctx.roundRect(10, 8, 236, 112, 18);
+    ctx.fill();
+
+    ctx.strokeStyle = isBonus ? cssColor(PALETTE.gold) : cssRgba(PALETTE.fg2, 0.75);
+    ctx.lineWidth = isBonus ? 6 : 3.5;
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isBonus ? cssColor(PALETTE.gold) : cssColor(PALETTE.fg2);
+    ctx.font = `700 22px ${FONT_UI}`;
+    ctx.fillText(isBonus ? '★ 2점 ★' : '1점', 128, 40);
+
+    ctx.fillStyle = isBonus ? cssColor(PALETTE.gold) : '#ffffff';
+    ctx.font = `900 56px ${FONT_UI}`;
+    ctx.fillText(keyword, 128, 96);
+  }
+
   /** 6대 키워드 표적 라벨 머티리얼을 단 1회만 생성하여 VRAM 누수 원천 차단 */
   private getOrCreateTargetLabelMaterial(keyword: TargetKeyword, points: number): THREE.SpriteMaterial {
     let cached = this.targetLabelCache.get(keyword);
@@ -1098,54 +1165,35 @@ export class ShootingArenaEngine {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
       canvas.height = 128;
-      const ctx = canvas.getContext('2d')!;
+      this.drawTargetLabel(canvas, keyword, points);
 
-      const isBonus = points === 2; // 정보, 통신
-
-      ctx.clearRect(0, 0, 256, 128);
-
-      // 1. 네온 뱃지 배경
-      ctx.fillStyle = isBonus ? 'rgba(4, 24, 52, 0.92)' : 'rgba(15, 20, 32, 0.88)';
-      ctx.beginPath();
-      ctx.roundRect(10, 8, 236, 112, 18);
-      ctx.fill();
-
-      // 2. 네온 테두리
-      ctx.strokeStyle = isBonus ? '#00f0ff' : '#ff0055';
-      ctx.lineWidth = isBonus ? 6 : 3.5;
-      ctx.stroke();
-
-      if (isBonus) {
-        // 황금빛 2점 헤더
-        ctx.fillStyle = '#ffe600';
-        ctx.font = 'bold 22px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('★ 2점 ★', 128, 40);
-
-        // 형광 시안 메인 키워드 ("정보", "통신")
-        ctx.fillStyle = '#00f0ff';
-        ctx.font = '900 56px sans-serif';
-        ctx.fillText(keyword, 128, 96);
-      } else {
-        // 1점 일반 헤더
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = 'bold 20px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('1점', 128, 40);
-
-        // 순백색 메인 키워드 ("제어", "회로", "인공", "전자")
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '900 54px sans-serif';
-        ctx.fillText(keyword, 128, 96);
-      }
-
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.minFilter = THREE.LinearFilter;
-      const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
-      cached = { texture, material: mat };
+      // 멀리 있는 라벨도 깨지지 않도록 밉맵 사용, 손에 든 총보다 앞에 그려지지 않도록 깊이 검사
+      const texture = asCanvasTexture(canvas, true);
+      const mat = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false,
+      });
+      cached = { texture, material: mat, points };
       this.targetLabelCache.set(keyword, cached);
     }
     return cached.material;
+  }
+
+  /** 웹 폰트를 불러온 뒤 캔버스 글자(표적 라벨·OLED·결과판)를 다시 그림 */
+  private refreshCanvasTextures() {
+    this.targetLabelCache.forEach((entry, keyword) => {
+      this.drawTargetLabel(entry.texture.image as HTMLCanvasElement, keyword, entry.points);
+      entry.texture.needsUpdate = true;
+    });
+    [this.p1Blaster, this.p2Blaster].forEach((b) => {
+      if (b) b.displayKey = '';
+    });
+    this.updateBlasterDisplays();
+    this.updateVRPrompt(this.vrPromptState.isGameOver, this.vrPromptState.winner);
   }
 
   /** 표적 상단 6가지 키워드 라벨 스프라이트 생성 (공유 캐시 머티리얼 재사용) */
@@ -1415,7 +1463,7 @@ export class ShootingArenaEngine {
     localBlaster.group.getWorldQuaternion(muzzleWorldQuat);
     const muzzleForward = new THREE.Vector3(0, 0, -1).applyQuaternion(muzzleWorldQuat).normalize();
 
-    const playerColor = slot === 1 ? 0x00f0ff : 0xff0055;
+    const playerColor = teamColor(slot);
     const hit = this.raycastTargets(muzzleWorldPos, muzzleForward);
 
     if (hit) {
@@ -1425,7 +1473,7 @@ export class ShootingArenaEngine {
       // 폭발·효과음은 바로 보여주고, 점수와 명중 기록은 서버 확정(서버 경기) 또는 즉시(로컬 경기) 반영
       hit.target.isHit = true;
       this.soundManager.playHit();
-      const hitColor = hit.target.points === 2 ? 0xffe600 : playerColor;
+      const hitColor = hit.target.points === 2 ? PALETTE.gold : playerColor;
       this.createExplosion(hit.point, hitColor);
       this.applyHitResult(slot, hit.target, hit.point);
     } else {
@@ -1500,9 +1548,9 @@ export class ShootingArenaEngine {
     this.notifyStats();
   }
 
-  private createExplosion(pos: THREE.Vector3, primaryColor: number = 0x00f0ff) {
+  private createExplosion(pos: THREE.Vector3, primaryColor: number = PALETTE.p1) {
     const particleCount = 20;
-    const colors = [primaryColor, 0xffe600, 0xffffff];
+    const colors = [primaryColor, PALETTE.gold, 0xffffff];
 
     for (let i = 0; i < particleCount; i++) {
       const size = 0.04 + Math.random() * 0.08;
@@ -1908,7 +1956,7 @@ export class ShootingArenaEngine {
     rivalBlaster.group.getWorldPosition(aiMuzzlePos);
     rivalBlaster.group.getWorldQuaternion(aiMuzzleQuat);
     const aiForward = new THREE.Vector3(0, 0, -1).applyQuaternion(aiMuzzleQuat).normalize();
-    const aiColor = aiSlot === 1 ? 0x00f0ff : 0xff0055;
+    const aiColor = teamColor(aiSlot);
     const hit = this.raycastTargets(aiMuzzlePos, aiForward);
 
     if (hit) {
@@ -2261,6 +2309,7 @@ export class ShootingArenaEngine {
   }
 
   public dispose() {
+    this.disposed = true;
     if (this.pendingStartTimer) {
       clearTimeout(this.pendingStartTimer);
       this.pendingStartTimer = null;
@@ -2314,8 +2363,22 @@ export class ShootingArenaEngine {
             else c.material.dispose();
           }
         });
+        // 착탄점 도트는 블래스터가 아니라 장면에 붙어 있어 따로 정리
+        this.scene.remove(b.laserDot);
+        b.laserDot.geometry.dispose();
+        (b.laserDot.material as THREE.Material).dispose();
       }
     });
+
+    // 6. 결과판 텍스처와 환경맵 해제
+    if (this.vrPromptMesh) {
+      const promptMat = this.vrPromptMesh.material as THREE.MeshBasicMaterial;
+      promptMat.map?.dispose();
+      promptMat.dispose();
+      this.vrPromptMesh.geometry.dispose();
+    }
+    this.scene.environment = null;
+    this.envMap?.dispose();
 
     if (this.vrButtonElement && this.vrButtonElement.parentNode) {
       this.vrButtonElement.parentNode.removeChild(this.vrButtonElement);

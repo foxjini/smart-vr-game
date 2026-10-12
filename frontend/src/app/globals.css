@@ -1,393 +1,420 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700;800&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap');
 @import "tailwindcss";
 
-:root {
-  --bg-dark: #030712;
-  --hud-bg: rgba(4, 9, 20, 0.38);
-  --hud-bg-subtle: rgba(6, 12, 26, 0.25);
-  --hud-border: rgba(0, 240, 255, 0.2);
-  --hud-border-hover: rgba(0, 240, 255, 0.7);
-  --hud-border-subtle: rgba(100, 116, 139, 0.25);
-  --cyan: #00f0ff;
-  --cyan-dim: rgba(0, 240, 255, 0.12);
-  --magenta: #ff0055;
-  --amber: #ffaa00;
-  --green: #00ffaa;
-  
-  --font-display: 'Orbitron', monospace;
-  --font-tech: 'Rajdhani', 'Noto Sans KR', sans-serif;
-  --font-mono: 'Share Tech Mono', 'JetBrains Mono', 'Noto Sans KR', monospace;
-  --font-korean: 'Noto Sans KR', sans-serif;
+/* ───────────────────────────────────────────────
+   폰트: 저장소(public/fonts)에 포함해 인터넷 없이도 동작 (SIL OFL 1.1)
+   - Pretendard: 한글·본문 (가변 굵기 45~920)
+   - Rajdhani: 숫자·영문 라벨 (라틴 문자만 담당, 한글은 Pretendard로 넘어감)
+   캔버스·3D 글자도 같은 이름을 씀 (components/arena/visual/fonts.ts)
+   ─────────────────────────────────────────────── */
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/PretendardVariable.woff2') format('woff2-variations'),
+    url('/fonts/PretendardVariable.woff2') format('woff2');
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  user-select: none;
-  -webkit-user-select: none;
+@font-face {
+  font-family: 'Rajdhani';
+  src: url('/fonts/rajdhani-latin-500-normal.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-html, body {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background-color: var(--bg-dark);
-  color: #e2e8f0;
-  font-family: var(--font-tech);
+@font-face {
+  font-family: 'Rajdhani';
+  src: url('/fonts/rajdhani-latin-600-normal.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* 3D 캔버스 래퍼 */
-#canvas-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 1;
-}
-
-/* UI 오버레이 레이어 */
-.hud-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  pointer-events: none;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 1.25rem 1.75rem;
-}
-
-.hud-interactive {
-  pointer-events: auto;
-}
-
-/* 투명 & 날카로운 HUD 글래스 패널 */
-.hud-panel {
-  background: var(--hud-bg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--hud-border);
-  border-radius: 4px;
-  position: relative;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.hud-panel-subtle {
-  background: var(--hud-bg-subtle);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--hud-border-subtle);
-  border-radius: 4px;
-}
-
-/* 코너 브래킷 (1px 정밀 테크 마커) */
-.hud-corners {
-  position: relative;
-}
-.hud-corners::before,
-.hud-corners::after {
-  content: '';
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  pointer-events: none;
-}
-.hud-corners::before {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid var(--cyan);
-  border-left: 2px solid var(--cyan);
-}
-.hud-corners::after {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 2px solid var(--cyan);
-  border-right: 2px solid var(--cyan);
-}
-
-/* 정밀 HUD 버튼 (1px 슬림 라인) */
-.hud-btn {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 0.55rem 1.2rem;
-  border-radius: 3px;
-  border: 1px solid var(--hud-border);
-  background: var(--cyan-dim);
-  color: #cbd5e1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.18s ease-out;
-  position: relative;
-}
-
-.hud-btn:hover {
-  border-color: var(--cyan);
-  background: rgba(0, 240, 255, 0.18);
-  color: #ffffff;
-  box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
-  transform: translateY(-1px);
-}
-
-.hud-btn:active {
-  transform: translateY(1px);
-  background: rgba(0, 240, 255, 0.3);
-}
-
-.hud-btn-primary {
-  border-color: var(--cyan);
-  background: rgba(0, 240, 255, 0.2);
-  color: #00f0ff;
+@font-face {
+  font-family: 'Rajdhani';
+  src: url('/fonts/rajdhani-latin-700-normal.woff2') format('woff2');
   font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-.hud-btn-primary:hover {
-  background: var(--cyan);
-  color: #030712;
-  box-shadow: 0 0 14px rgba(0, 240, 255, 0.4);
+/* ───────────────────────────────────────────────
+   디자인 토큰 (3D 색은 components/arena/visual/palette.ts와 같은 값)
+   예: bg-panel, text-fg-2, border-line, text-p1, bg-p2/20, font-num
+   ─────────────────────────────────────────────── */
+@theme static {
+  --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
+  --font-num: 'Rajdhani', 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
+  --font-display: 'Rajdhani', 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
+  --font-mono: 'Rajdhani', 'Pretendard', ui-monospace, 'Consolas', monospace;
+
+  /* 바탕·면 */
+  --color-ink: #070b14;
+  --color-panel: #0c1424;
+  --color-raised: #13203a;
+  --color-line: rgb(148 197 255 / 0.16);
+  --color-line-strong: rgb(148 197 255 / 0.32);
+
+  /* 글자 */
+  --color-fg: #eaf2ff;
+  --color-fg-2: #9fb0c8;
+  --color-fg-3: #7d8ba3;
+
+  /* 팀·의미 색 */
+  --color-p1: #22d3ee;
+  --color-p2: #ff3dc8;
+  --color-gold: #facc15;
+  --color-ai: #fb923c;
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+
+  --radius-panel: 0.75rem;
+
+  --shadow-panel: 0 18px 48px rgb(0 0 0 / 0.45);
+  --shadow-glow-p1: 0 0 24px rgb(34 211 238 / 0.35);
+  --shadow-glow-p2: 0 0 24px rgb(255 61 200 / 0.35);
+  --shadow-glow-gold: 0 0 24px rgb(250 204 21 / 0.35);
+
+  --ease-snap: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.hud-btn-magenta {
-  border-color: rgba(255, 0, 85, 0.4);
-  background: rgba(255, 0, 85, 0.1);
-  color: #ff3377;
-}
+@theme {
+  --animate-fade-in: fade-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-pulse-warn: pulse-warn 1s ease-in-out infinite;
 
-.hud-btn-magenta:hover {
-  border-color: var(--magenta);
-  background: rgba(255, 0, 85, 0.22);
-  color: #ffffff;
-  box-shadow: 0 0 12px rgba(255, 0, 85, 0.3);
-}
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 
-/* VR 입장 전용 날카로운 HUD 버튼 */
-.hud-btn-vr {
-  border-color: rgba(0, 240, 255, 0.7);
-  background: linear-gradient(90deg, rgba(0, 240, 255, 0.15) 0%, rgba(255, 0, 85, 0.15) 100%);
-  color: #ffffff;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-}
-
-.hud-btn-vr:hover {
-  border-color: #00f0ff;
-  background: linear-gradient(90deg, rgba(0, 240, 255, 0.35) 0%, rgba(255, 0, 85, 0.35) 100%);
-  box-shadow: 0 0 16px rgba(0, 240, 255, 0.35);
-}
-
-/* 레거시 호환 클래스 리다이렉트 */
-.neon-button {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  letter-spacing: 0.12em;
-  padding: 0.55rem 1.2rem;
-  border-radius: 3px;
-  border: 1px solid var(--hud-border);
-  background: var(--cyan-dim);
-  color: #cbd5e1;
-  cursor: pointer;
-  transition: all 0.18s ease-out;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-transform: uppercase;
-}
-.neon-button:hover {
-  border-color: var(--cyan);
-  background: rgba(0, 240, 255, 0.18);
-  color: #ffffff;
-  box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
-}
-.neon-button-magenta {
-  border-color: rgba(255, 0, 85, 0.4);
-  background: rgba(255, 0, 85, 0.1);
-  color: #ff3377;
-}
-.neon-button-magenta:hover {
-  border-color: var(--magenta);
-  background: rgba(255, 0, 85, 0.22);
-  color: #fff;
-  box-shadow: 0 0 12px rgba(255, 0, 85, 0.3);
-}
-.glass-panel {
-  background: var(--hud-bg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--hud-border);
-  border-radius: 4px;
-}
-.vr-enter-btn {
-  border-color: rgba(0, 240, 255, 0.7);
-  background: linear-gradient(90deg, rgba(0, 240, 255, 0.15) 0%, rgba(255, 0, 85, 0.15) 100%);
-  color: #ffffff;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-}
-.vr-enter-btn:hover {
-  border-color: #00f0ff;
-  background: linear-gradient(90deg, rgba(0, 240, 255, 0.35) 0%, rgba(255, 0, 85, 0.35) 100%);
-  box-shadow: 0 0 16px rgba(0, 240, 255, 0.35);
-}
-
-/* 상태 뱃지 (1px 미세 라인) */
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(2, 6, 14, 0.4);
-}
-
-.indicator-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-.dot-green {
-  background-color: var(--green);
-  box-shadow: 0 0 6px var(--green);
-}
-.dot-red {
-  background-color: #ff3344;
-  box-shadow: 0 0 6px #ff3344;
-}
-.dot-yellow {
-  background-color: var(--amber);
-  box-shadow: 0 0 6px var(--amber);
-}
-
-/* 탄약 게이지 (정밀 셀 바) */
-.ammo-indicator {
-  display: flex;
-  gap: 3px;
-  align-items: center;
-}
-.ammo-pip {
-  width: 6px;
-  height: 18px;
-  border-radius: 1px;
-  background: rgba(255, 255, 255, 0.1);
-  transition: all 0.12s ease-out;
-}
-.ammo-pip.loaded {
-  background: var(--cyan);
-  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
-}
-.ammo-pip.empty {
-  background: rgba(255, 0, 85, 0.25);
-}
-
-/* 타이틀 타이포그래피 */
-.cyber-title {
-  font-family: var(--font-display);
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-/* 투명 HUD 모달 백드롭 (3D 가상 공간이 투과되도록 투명도 극대화) */
-.modal-backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: radial-gradient(circle at center, rgba(3, 7, 18, 0.15) 0%, rgba(2, 5, 12, 0.65) 100%);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  pointer-events: auto !important;
-}
-
-/* 화면 중앙 정밀 HUD 조준선 (Crosshair Reticle) */
-.hud-center-reticle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 280px;
-  height: 280px;
-  pointer-events: none;
-  z-index: 15;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.7;
-}
-
-/* 메인 메뉴 HUD 카드 프레임 */
-.main-menu-card {
-  width: 100%;
-  max-width: 980px;
-  padding: 28px 36px;
-  margin: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  background: rgba(4, 9, 20, 0.42);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 240, 255, 0.25);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  border-radius: 4px;
-  max-height: 94vh;
-  overflow-y: auto;
-  position: relative;
-}
-
-@media (max-width: 640px) {
-  .main-menu-card {
-    padding: 20px 14px;
-    gap: 14px;
+  @keyframes pulse-warn {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
   }
 }
 
-/* 스크롤바 커스텀 */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: rgba(2, 6, 14, 0.4);
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 240, 255, 0.3);
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 240, 255, 0.6);
+/* ───────────────────────────────────────────────
+   기본 스타일
+   주의: 여기 규칙은 반드시 @layer 안에 둠.
+   레이어 밖 규칙은 Tailwind 유틸리티(@layer utilities)보다 항상 우선해서 p-*·m-* 같은 클래스가 무시됨
+   ─────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* 예전 클래스용 별칭 (새 화면 구성으로 옮기면서 정리) */
+    --bg-dark: var(--color-ink);
+    --cyan: var(--color-p1);
+    --cyan-dim: rgb(34 211 238 / 0.12);
+    --magenta: var(--color-p2);
+    --amber: var(--color-warn);
+    --green: var(--color-ok);
+    --hud-bg: rgb(12 20 36 / 0.78);
+    --hud-border: var(--color-line-strong);
+    --font-tech: var(--font-sans);
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--color-ink);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input,
+  textarea {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-p1);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgb(7 11 20 / 0.4);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(148 197 255 / 0.28);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(148 197 255 / 0.5);
+  }
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
+/* ───────────────────────────────────────────────
+   공용 구성 요소 클래스 (Tailwind 유틸리티로 덮어쓸 수 있음)
+   ─────────────────────────────────────────────── */
+@layer components {
+  /* 3D 캔버스 래퍼 */
+  #canvas-container {
+    position: absolute;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
-.animate-fadeIn {
-  animation: fadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  /* UI 오버레이 레이어 */
+  .hud-layer {
+    position: absolute;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 1.25rem 1.75rem;
+  }
+
+  .hud-interactive {
+    pointer-events: auto;
+  }
+
+  /* 반투명 패널 (밝은 3D 장면 위에서도 글자가 읽히도록 불투명도를 높임) */
+  .hud-panel {
+    background: var(--hud-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--hud-border);
+    border-radius: 10px;
+    position: relative;
+    transition:
+      border-color 0.2s ease,
+      background 0.2s ease;
+  }
+
+  /* 코너 브래킷 */
+  .hud-corners {
+    position: relative;
+  }
+  .hud-corners::before,
+  .hud-corners::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+  }
+  .hud-corners::before {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid var(--cyan);
+    border-left: 2px solid var(--cyan);
+    border-top-left-radius: 10px;
+  }
+  .hud-corners::after {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 2px solid var(--cyan);
+    border-right: 2px solid var(--cyan);
+    border-bottom-right-radius: 10px;
+  }
+
+  /* HUD 버튼 */
+  .hud-btn {
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    padding: 0.55rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--hud-border);
+    background: rgb(12 20 36 / 0.72);
+    color: var(--color-fg);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition:
+      background 0.18s ease-out,
+      border-color 0.18s ease-out,
+      box-shadow 0.18s ease-out,
+      transform 0.18s ease-out;
+    position: relative;
+  }
+
+  .hud-btn:hover {
+    border-color: var(--color-p1);
+    background: rgb(34 211 238 / 0.16);
+    box-shadow: var(--shadow-glow-p1);
+    transform: translateY(-1px);
+  }
+
+  .hud-btn:active {
+    transform: translateY(1px);
+    background: rgb(34 211 238 / 0.26);
+  }
+
+  .hud-btn-primary {
+    border-color: var(--color-p1);
+    background: rgb(34 211 238 / 0.2);
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  .hud-btn-primary:hover {
+    background: var(--color-p1);
+    color: var(--color-ink);
+  }
+
+  .hud-btn-magenta {
+    border-color: rgb(255 61 200 / 0.5);
+    background: rgb(255 61 200 / 0.12);
+  }
+
+  .hud-btn-magenta:hover {
+    border-color: var(--color-p2);
+    background: rgb(255 61 200 / 0.24);
+    box-shadow: var(--shadow-glow-p2);
+  }
+
+  .hud-btn-vr {
+    border-color: rgb(34 211 238 / 0.7);
+    background: linear-gradient(90deg, rgb(34 211 238 / 0.18) 0%, rgb(255 61 200 / 0.18) 100%);
+    font-weight: 700;
+  }
+
+  .hud-btn-vr:hover {
+    background: linear-gradient(90deg, rgb(34 211 238 / 0.36) 0%, rgb(255 61 200 / 0.36) 100%);
+  }
+
+  /* 상태 뱃지 */
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    white-space: nowrap;
+    border: 1px solid var(--color-line-strong);
+    background: rgb(7 11 20 / 0.7);
+  }
+
+  .indicator-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+  .dot-green {
+    background-color: var(--color-ok);
+    box-shadow: 0 0 6px var(--color-ok);
+  }
+  .dot-red {
+    background-color: var(--color-danger);
+    box-shadow: 0 0 6px var(--color-danger);
+  }
+
+  /* 탄약 게이지 */
+  .ammo-indicator {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+  }
+  .ammo-pip {
+    width: 7px;
+    height: 20px;
+    border-radius: 2px;
+    background: rgb(255 255 255 / 0.1);
+    transition: all 0.12s ease-out;
+  }
+  .ammo-pip.loaded {
+    background: var(--color-p1);
+    box-shadow: 0 0 6px rgb(34 211 238 / 0.6);
+  }
+  .ammo-pip.empty {
+    background: rgb(248 113 113 / 0.25);
+  }
+
+  /* 제목 글꼴 (영문은 Rajdhani, 한글은 Pretendard) */
+  .cyber-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* 모달 백드롭 */
+  .modal-backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, rgb(7 11 20 / 0.45) 0%, rgb(7 11 20 / 0.82) 100%);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    pointer-events: auto !important;
+  }
+
+  /* 화면 중앙 조준선 */
+  .hud-center-reticle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 280px;
+    height: 280px;
+    pointer-events: none;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
+  }
+
+  /* 세로 스크롤 영역 */
+  .custom-scrollbar {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 197 255 / 0.3) transparent;
+  }
+
+  .animate-fadeIn {
+    animation: var(--animate-fade-in);
+  }
 }
