@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { TargetKeyword } from '@/types';
 import { PALETTE } from './palette';
 import { TargetLabels } from './TargetLabels';
+import { SHOT_BEAM_FRAG, createBeamGeometry, createBeamMaterial } from './beamShader';
 
 /** 동시에 보일 수 있는 빛 입자(불꽃·섬광·고리) 수 */
 const MAX_GLOWS = 640;
@@ -105,53 +106,6 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
-/**
- * 빔은 시작점·끝점을 잇는 띠를 보는 사람(VR에서는 각 눈) 쪽으로 돌려 그림.
- * 자기 총에서 나가는 빔을 뒤에서 봐도 납작한 선이 되지 않음
- */
-const BEAM_VERT = /* glsl */ `
-uniform vec3 uStart;
-uniform vec3 uEnd;
-uniform float uWidth0;
-uniform float uWidth1;
-varying vec2 vUv;
-void main() {
-  vec3 viewStart = (viewMatrix * vec4(uStart, 1.0)).xyz;
-  vec3 viewEnd = (viewMatrix * vec4(uEnd, 1.0)).xyz;
-  vec3 p = mix(viewStart, viewEnd, position.z);
-  vec3 axis = normalize(viewEnd - viewStart);
-  vec3 c = cross(axis, normalize(-p));
-  float l = length(c);
-  vec3 side = l > 1e-5 ? c / l : vec3(1.0, 0.0, 0.0);
-  p += side * position.x * mix(uWidth0, uWidth1, position.z);
-  vUv = vec2(position.x + 0.5, position.z);
-  gl_Position = projectionMatrix * vec4(p, 1.0);
-}`;
-
-/** 히트스캔 빔: 가운데는 하얀 심, 바깥은 팀 색 빛, 총구 쪽에서 살짝 페이드 인 */
-const BEAM_FRAG = /* glsl */ `
-uniform vec3 uColor;
-uniform float uOpacity;
-varying vec2 vUv;
-void main() {
-  float d = abs(vUv.x - 0.5) * 2.0;
-  float core = 1.0 - smoothstep(0.0, 0.2, d);
-  float glow = pow(1.0 - d, 1.6);
-  float along = smoothstep(0.0, 0.03, vUv.y) * (1.0 - 0.3 * vUv.y);
-  float a = (glow * 0.75 + core) * along * uOpacity;
-  vec3 c = mix(uColor, vec3(1.0), core * 0.85);
-  gl_FragColor = vec4(c * a, a);
-  #include <colorspace_fragment>
-}`;
-
-/** 빔 띠: x = 폭 방향(-0.5~0.5), z = 길이 방향(0 = 총구, 1 = 끝). 실제 위치는 셰이더가 계산 */
-function createBeamGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-0.5, 0, 0, 0.5, 0, 0, -0.5, 0, 1, 0.5, 0, 1]), 3));
-  geo.setIndex([0, 2, 1, 1, 2, 3]);
-  return geo;
-}
-
 const _color = new THREE.Color();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
@@ -245,23 +199,7 @@ export class EffectsSystem {
     // 빔
     this.beamGeo = createBeamGeometry();
     for (let i = 0; i < BEAM_POOL; i++) {
-      const material = new THREE.ShaderMaterial({
-        uniforms: {
-          uColor: { value: new THREE.Color() },
-          uOpacity: { value: 0 },
-          uStart: { value: new THREE.Vector3() },
-          uEnd: { value: new THREE.Vector3() },
-          uWidth0: { value: BEAM_WIDTH_NEAR },
-          uWidth1: { value: BEAM_WIDTH_FAR },
-        },
-        vertexShader: BEAM_VERT,
-        fragmentShader: BEAM_FRAG,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-        toneMapped: false,
-      });
+      const material = createBeamMaterial(SHOT_BEAM_FRAG, BEAM_WIDTH_NEAR, BEAM_WIDTH_FAR, 0xffffff, 0);
       const mesh = new THREE.Mesh(this.beamGeo, material);
       mesh.visible = false;
       mesh.frustumCulled = false;

@@ -22,8 +22,8 @@ import { InputManager } from '@/core/input/InputManager';
 import { CyberAIRival, TargetObjectRef } from '@/core/ai/CyberAIRival';
 import { SpectatorCameraController } from '@/core/spectator/SpectatorCameraController';
 import { PerfPanel } from './visual/debug/PerfPanel';
-import { PALETTE, teamColor, cssColor, cssRgba } from './visual/palette';
-import { configureRenderer, requestTargetFrameRate, asCanvasTexture } from './visual/renderSetup';
+import { PALETTE, teamColor, cssColor } from './visual/palette';
+import { configureRenderer, requestTargetFrameRate } from './visual/renderSetup';
 import { FONT_UI, FONT_NUM, loadCanvasFonts } from './visual/fonts';
 import { DroneFactory, targetGlowColor } from './visual/DroneFactory';
 import { HitProxyFactory } from './visual/hitProxies';
@@ -32,6 +32,16 @@ import { TargetLabels } from './visual/TargetLabels';
 import { Haptics, HapticPattern } from './visual/Haptics';
 import { ArenaEnvironment } from './visual/ArenaEnvironment';
 import { detectQuality, QualitySettings } from './visual/quality';
+import { BlasterFactory, BlasterVisual } from './visual/BlasterModel';
+import { AimProbe } from './visual/AimProbe';
+import { AvatarFactory, AvatarVisual } from './visual/AvatarModel';
+import { PoseSmoother } from './visual/PoseSmoother';
+import { HoloTextFactory } from './visual/text/HoloText';
+import type { Text } from 'troika-three-text';
+import { VR_TEXT } from './visual/text/vrStrings';
+import { HoloScoreboard } from './visual/HoloScoreboard';
+import { ResultPanel, ResultPlayer } from './visual/ResultPanel';
+import { aiSlotOf, formatClock, normalizeWinner, slotName, winnerHeadline } from '@/components/ui/matchInfo';
 
 export const TARGET_KEYWORDS: TargetKeyword[] = ['정보', '통신', '제어', '회로', '인공', '전자'];
 
@@ -61,6 +71,10 @@ const TARGET_SPAWN_TIME = 0.35;
 const TARGET_DESPAWN_TIME = 0.4;
 /** 빗나간 사격의 빔 길이(m) */
 const MISS_BEAM_LENGTH = 55;
+/** 재장전 시간(초) */
+const RELOAD_TIME = 1.2;
+/** 선수 PC 화면 시야각 (관전 화면은 SpectatorCameraController가 60으로 바꿈) */
+const PLAYER_FOV = 75;
 
 export interface TargetObject extends TargetObjectRef {
   id: string;
@@ -114,13 +128,14 @@ export interface MatchEndResult {
 }
 
 interface BlasterRig {
+  /** 사격 광선의 출발점·방향 (겉모습은 visual.root로 이 그룹의 자식) */
   group: THREE.Group;
+  /** 겉모습·탄약 칸·OLED·조준선·조준점 (사격 판정에는 쓰이지 않음) */
+  visual: BlasterVisual;
   displayMesh: THREE.Mesh;
   displayTexture: THREE.CanvasTexture;
   displayCanvas: HTMLCanvasElement;
   displayCtx: CanvasRenderingContext2D;
-  laserBeam: THREE.Line;
-  laserDot: THREE.Mesh;
   recoilOffset: number;
   primaryColor: number;
   nameTag: string;
@@ -224,6 +239,25 @@ export class ShootingArenaEngine {
   private drones!: DroneFactory;
   private effects!: EffectsSystem;
   private haptics = new Haptics();
+  private blasterFactory = new BlasterFactory();
+  private aimProbe = new AimProbe();
+  /** VR 안 글자 (이름표·점수판·결과판) */
+  private texts = new HoloTextFactory();
+  private avatars!: AvatarFactory;
+  /** 게이트 안 홀로그램 점수판과 시작·종료 연출 */
+  private scoreboard!: HoloScoreboard;
+  /** VR 결과판 (vrPromptMesh가 이 결과판의 뒤판) */
+  private resultPanel!: ResultPanel;
+  private p1Avatar!: AvatarVisual;
+  private p2Avatar!: AvatarVisual;
+  /** 상대 선수 자세를 부드럽게 따라가기 (슬롯별 머리·블래스터) */
+  private poseSmooth: Record<PlayerSlot, { head: PoseSmoother; blaster: PoseSmoother }> = {
+    1: { head: new PoseSmoother(), blaster: new PoseSmoother() },
+    2: { head: new PoseSmoother(), blaster: new PoseSmoother() },
+  };
+  private _aimPoint = new THREE.Vector3();
+  private _aimDir = new THREE.Vector3();
+  private _camQuat = new THREE.Quaternion();
   /** 결과판에 마지막으로 그린 상태 (폰트를 불러온 뒤 같은 내용으로 다시 그리기 위함) */
   private vrPromptState: { isGameOver: boolean; winner?: string } = { isGameOver: false };
   private disposed = false;
@@ -280,6 +314,9 @@ export class ShootingArenaEngine {
   private aimHits: THREE.Intersection[] = [];
   /** 개발용 성능 표시 (?debug=perf일 때만) */
   private perfPanel?: PerfPanel;
+  /** VR 안 성능 표시: 총을 들지 않은 손 컨트롤러 옆 (?debug=perf일 때만) */
+  private perfText?: Text;
+  private perfSample = -1;
 
   constructor(container: HTMLElement, initialTheme: ThemeType = 'cyber') {
     this.container = container;
@@ -289,7 +326,7 @@ export class ShootingArenaEngine {
 
     // 1. 카메라 설정
     this.camera = new THREE.PerspectiveCamera(
-      75,
+      PLAYER_FOV,
       container.clientWidth / container.clientHeight,
       0.1,
       1000
@@ -339,6 +376,10 @@ export class ShootingArenaEngine {
 
     // 4. 컴포넌트 빌드
     this.arena.setTheme(this.currentTheme);
+    this.scoreboard = new HoloScoreboard(this.texts);
+    this.scene.add(this.scoreboard.root);
+    // VR 글자에 쓰는 글리프를 미리 만듦 (경기 중 처음 나오는 글자 때문에 멈칫하지 않게)
+    this.texts.preload();
     this.buildDualBlasters();
     this.buildVRHeadAvatars();
     this.buildVRPrompt();
@@ -377,6 +418,9 @@ export class ShootingArenaEngine {
 
     if (PerfPanel.isEnabled()) {
       this.perfPanel = new PerfPanel(this.renderer);
+      this.perfText = this.texts.create({ text: '', font: 'num', size: 0.022, color: 0x9fe8ff, anchorX: 'left', lineHeight: 1.2 });
+      this.perfText.rotation.set(-0.9, 0, 0);
+      this.perfText.visible = false;
     }
 
     // 8. 렌더 루프 시작. 첫 화면·접속 처리를 막지 않도록 잠시 뒤 셰이더를 미리 컴파일
@@ -423,15 +467,9 @@ export class ShootingArenaEngine {
       if (slot === this.localSlot) return;
       // 로컬 AI가 조종 중인 슬롯은 원격 포즈로 덮어쓰지 않음
       if (this.isPlaying && this.ownsAIRival() && slot === this.aiSlot) return;
-      const head = slot === 1 ? this.p1Head : this.p2Head;
-      const blaster = slot === 1 ? this.p1Blaster : this.p2Blaster;
-      head.position.set(...pose.headPos);
-      head.quaternion.set(...pose.headQuat);
-      blaster.group.position.set(...pose.blasterPos);
-      blaster.group.quaternion.set(...pose.blasterQuat);
-      if (blaster.recoilOffset > 0) {
-        blaster.group.rotateX(-blaster.recoilOffset);
-      }
+      // 초당 20번 오는 자세를 목표로 두고, 매 프레임 부드럽게 따라감 (animate)
+      this.poseSmooth[slot].head.set(pose.headPos, pose.headQuat);
+      this.poseSmooth[slot].blaster.set(pose.blasterPos, pose.blasterQuat);
     };
 
     this.inputManager.onRemoteFire = (data) => {
@@ -617,11 +655,20 @@ export class ShootingArenaEngine {
   /** 역할에 맞춰 리그(내 위치)·헬멧·블래스터를 배치 */
   private applyRoleLayout() {
     const local = this.localSlot;
+    // 배치를 새로 하므로 이전 자세로 끌려가지 않게 (다음 자세는 바로 옮김)
+    this.poseSmooth[1].head.reset();
+    this.poseSmooth[1].blaster.reset();
+    this.poseSmooth[2].head.reset();
+    this.poseSmooth[2].blaster.reset();
     this.playerRig.position.set(local === 1 ? -SLOT_OFFSET_X : local === 2 ? SLOT_OFFSET_X : 0, 0, 0);
     if (local !== null) {
-      // 관람 카메라가 옮겨 둔 시점을 플레이어 1인칭 시점으로 되돌림
+      // 관람 카메라가 옮겨 둔 시점·시야각을 플레이어 1인칭 시점으로 되돌림
       this.camera.position.set(0, 1.6, 0);
       this.camera.rotation.set(0, 0, 0);
+      if (this.camera.fov !== PLAYER_FOV) {
+        this.camera.fov = PLAYER_FOV;
+        this.camera.updateProjectionMatrix();
+      }
     }
 
     ([1, 2] as PlayerSlot[]).forEach((slot) => {
@@ -695,92 +742,17 @@ export class ShootingArenaEngine {
 
   private createBlasterRig(primaryColor: number, nameTag: string): BlasterRig {
     const group = new THREE.Group();
-    const weaponBodyMat = new THREE.MeshStandardMaterial({
-      color: 0x151b26,
-      roughness: 0.3,
-      metalness: 0.8,
-    });
-    const neonMat = new THREE.MeshBasicMaterial({ color: primaryColor });
-
-    // 메인 바디
-    const bodyGeo = new THREE.BoxGeometry(0.08, 0.12, 0.35);
-    const body = new THREE.Mesh(bodyGeo, weaponBodyMat);
-    body.position.set(0, 0, -0.1);
-    group.add(body);
-
-    // 총열
-    const barrelGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.25, 16);
-    barrelGeo.rotateX(Math.PI / 2);
-    const barrel = new THREE.Mesh(barrelGeo, weaponBodyMat);
-    barrel.position.set(0, 0.02, -0.35);
-    group.add(barrel);
-
-    // 총구 팁
-    const tipGeo = new THREE.TorusGeometry(0.032, 0.008, 8, 24);
-    const tip = new THREE.Mesh(tipGeo, neonMat);
-    tip.position.set(0, 0.02, -0.48);
-    group.add(tip);
-
-    // 에너지 코어
-    const coreGeo = new THREE.BoxGeometry(0.06, 0.04, 0.16);
-    const core = new THREE.Mesh(coreGeo, neonMat);
-    core.position.set(0, 0.07, -0.12);
-    group.add(core);
-
-    // 손잡이
-    const gripGeo = new THREE.BoxGeometry(0.06, 0.16, 0.08);
-    gripGeo.rotateX(-0.3);
-    const grip = new THREE.Mesh(gripGeo, weaponBodyMat);
-    grip.position.set(0, -0.1, 0.0);
-    group.add(grip);
-
-    // 실시간 레이저 조준선
-    const points = [new THREE.Vector3(0, 0.02, -0.48), new THREE.Vector3(0, 0.02, -40)];
-    const beamGeo = new THREE.BufferGeometry().setFromPoints(points);
-    const beamMat = new THREE.LineBasicMaterial({
-      color: primaryColor,
-      transparent: true,
-      opacity: 0.65,
-      linewidth: 2,
-    });
-    const laserBeam = new THREE.Line(beamGeo, beamMat);
-    group.add(laserBeam);
-
-    // 착탄점 레이저 도트
-    const dotGeo = new THREE.RingGeometry(0.08, 0.12, 16);
-    const dotMat = new THREE.MeshBasicMaterial({
-      color: primaryColor,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.8,
-    });
-    const laserDot = new THREE.Mesh(dotGeo, dotMat);
-    laserDot.position.set(0, 0, -40);
-    this.scene.add(laserDot);
-
-    // 블래스터 상단 스마트 OLED 디스플레이
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d')!;
-
-    const texture = asCanvasTexture(canvas);
-    const geo = new THREE.PlaneGeometry(0.1, 0.05);
-    // 화면 글자는 그린 색 그대로 보이도록 tone mapping 제외
-    const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, toneMapped: false });
-    const displayMesh = new THREE.Mesh(geo, mat);
-    displayMesh.position.set(0, 0.09, -0.04);
-    displayMesh.rotation.set(-0.35, 0, 0); // Y축 반전 없이 앞면 정렬
-    group.add(displayMesh);
-
+    const visual = this.blasterFactory.create(primaryColor);
+    group.add(visual.root);
+    // 조준선·조준점은 월드 좌표로 그리므로 장면에 바로 붙임
+    this.scene.add(visual.aimBeam, visual.aimDot, visual.lockRing);
     return {
       group,
-      displayMesh,
-      displayTexture: texture,
-      displayCanvas: canvas,
-      displayCtx: ctx,
-      laserBeam,
-      laserDot,
+      visual,
+      displayMesh: visual.displayMesh,
+      displayTexture: visual.displayTexture,
+      displayCanvas: visual.displayCanvas,
+      displayCtx: visual.displayCtx,
       recoilOffset: 0,
       primaryColor,
       nameTag,
@@ -788,301 +760,197 @@ export class ShootingArenaEngine {
     };
   }
 
-  /** 원격 플레이어용 3D VR 바이저 헤드 아바타 구축 */
+  /** ?debug=perf: VR에서 총을 들지 않은 손 컨트롤러 위에 fps·draw call(양 눈 합계) 표시 */
+  private updateVRPerfText(inVR: boolean) {
+    const t = this.perfText;
+    if (!t || !this.perfPanel) return;
+    const free = this.activeController === this.controller0 ? this.controller1 : this.controller0;
+    t.visible = inVR && Boolean(free);
+    if (!t.visible) return;
+    if (t.parent !== free) {
+      free.add(t);
+      t.position.set(-0.03, 0.04, -0.06);
+    }
+    const p = this.perfPanel.last;
+    if (p.sample !== this.perfSample) {
+      this.perfSample = p.sample;
+      HoloTextFactory.set(t, `FPS ${p.fps}\nDRAW ${p.calls}/${p.maxCalls}`);
+    }
+  }
+
+  /** 상대 선수(또는 AI)의 바이저 헬멧과 이름표. 머리 그룹은 위치·회전만 맡고 겉모습은 자식으로 붙음 */
   private buildVRHeadAvatars() {
-    this.p1Head = this.createVRHeadMesh(teamColor(1), 'P1: CYAN');
+    this.avatars = new AvatarFactory(this.texts);
+    this.p1Avatar = this.avatars.create(teamColor(1), VR_TEXT.p1);
+    this.p2Avatar = this.avatars.create(teamColor(2), VR_TEXT.p2);
+
+    this.p1Head = new THREE.Group();
+    this.p1Head.add(this.p1Avatar.root);
     this.p1Head.position.set(-0.35, 1.6, 0);
     this.p1Head.visible = this.clientRole === 'SPECTATOR';
     this.scene.add(this.p1Head);
 
-    this.p2Head = this.createVRHeadMesh(teamColor(2), 'P2: MAGENTA');
+    this.p2Head = new THREE.Group();
+    this.p2Head.add(this.p2Avatar.root);
     this.p2Head.position.set(0.35, 1.6, 0);
     this.p2Head.visible = true;
     this.scene.add(this.p2Head);
   }
 
-  private createVRHeadMesh(neonColor: number, _label: string): THREE.Group {
-    const headGroup = new THREE.Group();
-
-    // 헬멧 베이스
-    const helmetGeo = new THREE.BoxGeometry(0.24, 0.2, 0.24);
-    const helmetMat = new THREE.MeshStandardMaterial({
-      color: 0x111622,
-      roughness: 0.4,
-      metalness: 0.8,
+  /** 이름표 글자 (AI가 맡은 자리는 'AI')와 보는 사람 쪽 회전 */
+  private updateAvatarTags(ai: PlayerSlot | null) {
+    ([1, 2] as PlayerSlot[]).forEach((slot) => {
+      const head = slot === 1 ? this.p1Head : this.p2Head;
+      if (!head.visible) return;
+      const v = slot === 1 ? this.p1Avatar : this.p2Avatar;
+      HoloTextFactory.set(v.nameTag, slot === ai ? VR_TEXT.ai : slot === 1 ? VR_TEXT.p1 : VR_TEXT.p2);
+      AvatarFactory.faceCamera(v, head.quaternion, this._camQuat);
     });
-    const helmet = new THREE.Mesh(helmetGeo, helmetMat);
-    headGroup.add(helmet);
-
-    // 전면 네온 바이저
-    const visorGeo = new THREE.BoxGeometry(0.22, 0.09, 0.06);
-    const visorMat = new THREE.MeshBasicMaterial({ color: neonColor });
-    const visor = new THREE.Mesh(visorGeo, visorMat);
-    visor.position.set(0, 0.01, -0.11);
-    headGroup.add(visor);
-
-    return headGroup;
   }
 
-  /** VR 공간 3D 안내 및 결과(Debrief) 홀로그램 패널 */
+  /** VR 결과판: 경기가 끝나면 선수 정면(리그 기준 0, 1.6, -2.5)에 보임 */
   private buildVRPrompt() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 640;
-    const ctx = canvas.getContext('2d')!;
-
-    this.drawPromptContent(ctx, canvas.width, canvas.height, false);
-
-    const texture = asCanvasTexture(canvas);
-    const geo = new THREE.PlaneGeometry(2.6, 1.62);
-    const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, toneMapped: false });
-    this.vrPromptMesh = new THREE.Mesh(geo, mat);
+    this.resultPanel = new ResultPanel(this.texts);
+    this.vrPromptMesh = this.resultPanel.mesh;
     this.vrPromptMesh.position.set(0, 1.6, -2.5);
-    this.vrPromptMesh.visible = false; // 메뉴 UI와의 중복 겹침 방지 (게임 종료 시 결과판으로만 활성화)
+    this.vrPromptMesh.visible = false; // 메뉴 UI와 겹치지 않게 경기가 끝났을 때만 보임
     this.playerRig.add(this.vrPromptMesh); // 내 정면에 보이도록 리그 기준으로 배치
   }
 
-  private drawPromptContent(
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    isGameOver: boolean,
-    winner?: string
-  ) {
-    ctx.clearRect(0, 0, w, h);
-
-    if (isGameOver) {
-      // 1. 라운드 종료 1:1 대결 결과판
-      // roundRect는 현재 경로에 누적되므로 도형마다 beginPath()로 새 경로를 시작
-      ctx.fillStyle = 'rgba(7, 10, 20, 0.94)';
-      ctx.beginPath();
-      ctx.roundRect(10, 10, w - 20, h - 20, 28);
-      ctx.fill();
-      ctx.strokeStyle = cssColor(PALETTE.p1);
-      ctx.lineWidth = 6;
-      ctx.stroke();
-
-      // 상단 타이틀
-      ctx.fillStyle = cssColor(PALETTE.gold);
-      ctx.font = `700 34px ${FONT_NUM}`;
-      ctx.textAlign = 'center';
-      ctx.fillText('1:1 VERSUS ARENA DEBRIEF', w / 2, 65);
-
-      // 승자 발표 배너
-      let winText = '🤝 DRAW MATCH!';
-      if (winner === 'ABORT') {
-        winText = '🛑 MATCH ABORTED (경기 중단)';
-      } else if (winner === 'REPLACED') {
-        winText = '🔌 연결 해제: 같은 역할로 새로 접속됨';
-      } else if (winner === 'SLOT_BUSY') {
-        winText = '⏳ 내 자리를 다른 기기가 사용 중';
-      } else if (winner === 'P1') {
-        winText = '🏆 PLAYER 1 (CYAN) WINS!';
-      } else if (winner === 'P2') {
-        winText = '🏆 PLAYER 2 (MAGENTA) WINS!';
-      }
-      const winColor = ABORT_REASONS.includes(winner ?? '')
-        ? PALETTE.danger
-        : winner === 'P1'
-          ? PALETTE.p1
-          : winner === 'P2'
-            ? PALETTE.p2
-            : PALETTE.fg;
-      ctx.fillStyle = cssColor(winColor);
-      ctx.font = `800 46px ${FONT_UI}`;
-      ctx.fillText(winText, w / 2, 130);
-
-      // 좌측 P1 스탯 박스
-      ctx.fillStyle = cssRgba(PALETTE.p1, 0.12);
-      ctx.beginPath();
-      ctx.roundRect(40, 160, 440, 380, 20);
-      ctx.fill();
-      ctx.strokeStyle = cssColor(PALETTE.p1);
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      ctx.fillStyle = cssColor(PALETTE.p1);
-      ctx.font = `800 36px ${FONT_UI}`;
-      ctx.fillText('플레이어 1 (시안)', 260, 215);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `700 56px ${FONT_NUM}`;
-      ctx.fillText(`${this.stats.score.toLocaleString()} PTS`, 260, 285);
-
-      ctx.font = `500 24px ${FONT_UI}`;
-      ctx.fillStyle = cssColor(PALETTE.fg2);
-      ctx.fillText(`명중: ${this.stats.hits}회 / 명중률: ${this.stats.shotsFired > 0 ? `${this.stats.accuracy}%` : '-'}`, 260, 360);
-      ctx.fillText(`최대 콤보: ${this.stats.maxCombo}x`, 260, 410);
-
-      // 우측 P2 스탯 박스
-      ctx.fillStyle = cssRgba(PALETTE.p2, 0.12);
-      ctx.beginPath();
-      ctx.roundRect(540, 160, 440, 380, 20);
-      ctx.fill();
-      ctx.strokeStyle = cssColor(PALETTE.p2);
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      ctx.fillStyle = cssColor(PALETTE.p2);
-      ctx.font = `800 36px ${FONT_UI}`;
-      const p2Title = this.inputManager.isP2Connected ? '플레이어 2 (마젠타)' : '사이버 AI 라이벌';
-      ctx.fillText(p2Title, 760, 215);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `700 56px ${FONT_NUM}`;
-      ctx.fillText(`${this.p2Stats.score.toLocaleString()} PTS`, 760, 285);
-
-      ctx.font = `500 24px ${FONT_UI}`;
-      ctx.fillStyle = cssColor(PALETTE.fg2);
-      ctx.fillText(`명중: ${this.p2Stats.hits}회 / 명중률: ${this.p2Stats.shotsFired > 0 ? `${this.p2Stats.accuracy}%` : '-'}`, 760, 360);
-      ctx.fillText(`최대 콤보: ${this.p2Stats.maxCombo}x`, 760, 410);
-
-      // 하단 안내: 2대 명확한 선택지 제공
-      ctx.fillStyle = cssColor(PALETTE.ok);
-      ctx.font = `700 24px ${FONT_UI}`;
-      ctx.fillText('🔫 [트리거 방아쇠] : VR 모드 유지하고 다시 시작', w / 2, 570);
-
-      ctx.fillStyle = cssColor(PALETTE.warn);
-      ctx.font = `700 22px ${FONT_UI}`;
-      ctx.fillText('🚪 [그립 / 메뉴 버튼] : VR 종료하고 웹 메인 화면 복귀', w / 2, 615);
-    } else {
-      // 2. 대기 상태 안내판 (1px 투명 HUD 스타일)
-      ctx.fillStyle = 'rgba(4, 9, 20, 0.45)';
-      ctx.beginPath();
-      ctx.roundRect(10, 10, w - 20, h - 20, 4);
-      ctx.fill();
-      ctx.strokeStyle = cssRgba(PALETTE.p1, 0.35);
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // 코너 테크 마커 틱
-      ctx.strokeStyle = cssColor(PALETTE.p1);
-      ctx.lineWidth = 2;
-      const tick = 16;
-      ctx.beginPath();
-      ctx.moveTo(10, 10 + tick); ctx.lineTo(10, 10); ctx.lineTo(10 + tick, 10);
-      ctx.moveTo(w - 10 - tick, 10); ctx.lineTo(w - 10, 10); ctx.lineTo(w - 10, 10 + tick);
-      ctx.moveTo(10, h - 10 - tick); ctx.lineTo(10, h - 10); ctx.lineTo(10 + tick, h - 10);
-      ctx.moveTo(w - 10 - tick, h - 10); ctx.lineTo(w - 10, h - 10); ctx.lineTo(w - 10, h - 10 - tick);
-      ctx.stroke();
-
-      ctx.textAlign = 'center';
-      ctx.fillStyle = cssColor(PALETTE.p1);
-      ctx.font = `700 26px ${FONT_UI}`;
-      ctx.fillText('// 경기장 출격 대기 // 1:1 사격 매트릭스', w / 2, 90);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `700 52px ${FONT_NUM}`;
-      ctx.fillText('CYBER STRIKE ARENA', w / 2, 170);
-
-      ctx.fillStyle = cssColor(PALETTE.fg2);
-      ctx.font = `500 22px ${FONT_UI}`;
-      ctx.fillText('Quest 2 터치: 트리거 [발사] | 그립 [재장전]', w / 2, 250);
-
-      const vsModeText = this.inputManager.isP2Connected
-        ? '상태: 2P 플레이어 온라인 // PVP 대결 준비 완료'
-        : '상태: 2P 미접속 // AI 라이벌 봇 대결 가동';
-      ctx.fillStyle = cssColor(this.inputManager.isP2Connected ? PALETTE.ok : PALETTE.p1);
-      ctx.font = `700 24px ${FONT_UI}`;
-      ctx.fillText(vsModeText, w / 2, 340);
-
-      ctx.fillStyle = cssColor(PALETTE.p1);
-      ctx.font = `700 26px ${FONT_UI}`;
-      ctx.fillText('🔫 [트리거] : 경기 출격  |  🚪 [그립/메뉴] : VR 종료', w / 2, 470);
-    }
+  /** AI가 맡은 자리 (2D 화면과 같은 규칙, 친구 대결이면 null) */
+  private aiSeat(): PlayerSlot | null {
+    const im = this.inputManager;
+    return aiSlotOf(im.versusMode, im.isP1Connected, im.isP2Connected, this.clientRole);
   }
 
+  /** 결과판 내용 (승자 문구는 2D 결과창과 같은 함수로 만듦) */
   private updateVRPrompt(isGameOver: boolean = false, winner?: string) {
     this.vrPromptState = { isGameOver, winner };
-    if (!this.vrPromptMesh) return;
-    const mat = this.vrPromptMesh.material as THREE.MeshBasicMaterial;
-    const texture = mat.map as THREE.CanvasTexture;
-    const canvas = texture.image as HTMLCanvasElement;
-    const ctx = canvas.getContext('2d')!;
-
-    this.drawPromptContent(ctx, canvas.width, canvas.height, isGameOver, winner);
-    texture.needsUpdate = true;
+    if (!this.resultPanel || !isGameOver) return;
+    const ai = this.aiSeat();
+    let headline: string;
+    let headlineColor: number;
+    let winSlot: PlayerSlot | null = null;
+    if (winner === 'ABORT') {
+      headline = VR_TEXT.aborted;
+      headlineColor = PALETTE.danger;
+    } else if (winner === 'REPLACED') {
+      headline = VR_TEXT.replaced;
+      headlineColor = PALETTE.danger;
+    } else if (winner === 'SLOT_BUSY') {
+      headline = VR_TEXT.slotBusy;
+      headlineColor = PALETTE.danger;
+    } else {
+      const w = normalizeWinner(winner, this.stats.score, this.p2Stats.score);
+      headline = winnerHeadline(w, ai);
+      winSlot = w === 'P1' ? 1 : w === 'P2' ? 2 : null;
+      headlineColor = winSlot === 1 ? PALETTE.p1 : winSlot === 2 ? PALETTE.p2 : PALETTE.gold;
+    }
+    const player = (slot: PlayerSlot): ResultPlayer => {
+      const st = this.statsFor(slot);
+      return { name: slotName(slot, ai), score: st.score, hits: st.hits, accuracy: st.accuracy, shots: st.shotsFired, maxCombo: st.maxCombo };
+    };
+    this.resultPanel.show({ headline, headlineColor, winSlot, mySlot: this.localSlot, p1: player(1), p2: player(2) });
   }
 
   /** 듀얼 OLED 디스플레이 업데이트 (내용이 바뀐 블래스터만 다시 그림) */
   private updateBlasterDisplays() {
-    this.renderOLED(this.p1Blaster, this.stats, this.p2Stats, 1);
-    this.renderOLED(this.p2Blaster, this.p2Stats, this.stats, 2);
+    this.renderOLED(this.p1Blaster, this.stats, this.p2Stats);
+    this.renderOLED(this.p2Blaster, this.p2Stats, this.stats);
   }
 
-  private renderOLED(
-    rig: BlasterRig,
-    myStats: GameStats,
-    rivalStats: GameStats,
-    playerId: PlayerSlot
-  ) {
+  /**
+   * 총 위 OLED: 남은 시간·내 점수·상대 점수·탄약 칸 (Half-Life: Alyx처럼 큰 숫자 위주).
+   * 재장전·일시정지·VR 종료 길게 누르기일 때는 그 상태를 크게 보여 줌
+   */
+  private renderOLED(rig: BlasterRig, myStats: GameStats, rivalStats: GameStats) {
     const isWarning = this.isPlaying && this.roundTimer <= 10;
-    const time = String(this.stats.timeRemaining).padStart(2, '0');
+    const time = formatClock(this.stats.timeRemaining);
     let mode: 'exit' | 'paused' | 'reload' | 'normal' = 'normal';
     if (this.vrExitHoldTimer > 0) mode = 'exit';
     else if (this.isPlaying && this.isPaused) mode = 'paused';
     else if (myStats.isReloading) mode = 'reload';
     const exitLeft = mode === 'exit' ? (1.2 - this.vrExitHoldTimer).toFixed(1) : '';
+    const reloadStep = mode === 'reload' ? Math.round(THREE.MathUtils.clamp(1 - this.reloadTimer / RELOAD_TIME, 0, 1) * 10) : 0;
 
     // 보이는 내용이 그대로면 캔버스 그리기와 텍스처 업로드를 건너뜀
-    const key = `${mode}|${exitLeft}|${time}|${isWarning}|${myStats.score}|${rivalStats.score}|${myStats.ammo}/${myStats.maxAmmo}`;
+    const key = `${mode}|${exitLeft}|${time}|${isWarning}|${myStats.score}|${rivalStats.score}|${myStats.ammo}/${myStats.maxAmmo}|${reloadStep}`;
     if (key === rig.displayKey) return;
     rig.displayKey = key;
 
     const ctx = rig.displayCtx;
-    const canvas = rig.displayCanvas;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const { width: w, height: h } = rig.displayCanvas;
+    ctx.clearRect(0, 0, w, h);
 
     const teamCss = cssColor(rig.primaryColor);
-    const borderColor = isWarning ? cssColor(PALETTE.danger) : teamCss;
+    const accent = isWarning ? cssColor(PALETTE.danger) : teamCss;
 
     // beginPath() 없이 roundRect()를 부르면 호출마다 경로가 쌓여 그리기가 점점 느려짐
-    ctx.fillStyle = isWarning ? 'rgba(40, 8, 14, 0.88)' : 'rgba(7, 11, 20, 0.88)';
+    ctx.fillStyle = isWarning ? 'rgba(36, 6, 12, 0.95)' : 'rgba(5, 8, 15, 0.95)';
     ctx.beginPath();
-    ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, 12);
+    ctx.roundRect(6, 6, w - 12, h - 12, 22);
     ctx.fill();
-
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 4;
     ctx.stroke();
+    ctx.textBaseline = 'alphabetic';
 
-    ctx.textAlign = 'center';
+    // 아래쪽 칸 막대 (탄약 또는 재장전 진행)
+    const drawCells = (lit: number, color: string) => {
+      for (let i = 0; i < 10; i++) {
+        ctx.fillStyle = i < lit ? color : 'rgba(159, 176, 200, 0.18)';
+        ctx.beginPath();
+        ctx.roundRect(40 + i * 29, 200, 22, 26, 5);
+        ctx.fill();
+      }
+    };
 
     if (mode === 'exit') {
+      ctx.textAlign = 'center';
       ctx.fillStyle = cssColor(PALETTE.danger);
-      ctx.font = `700 46px ${FONT_NUM}`;
-      ctx.fillText(`EXIT ${exitLeft}s`, canvas.width / 2, 105);
+      ctx.font = `800 64px ${FONT_UI}`;
+      ctx.fillText(`VR 종료 ${exitLeft}초`, w / 2, 112);
       ctx.fillStyle = cssColor(PALETTE.gold);
-      ctx.font = `600 28px ${FONT_NUM}`;
-      ctx.fillText('KEEP HOLDING TO QUIT', canvas.width / 2, 185);
+      ctx.font = `700 34px ${FONT_UI}`;
+      ctx.fillText('버튼을 계속 누르고 있기', w / 2, 184);
     } else if (mode === 'paused') {
+      ctx.textAlign = 'center';
       ctx.fillStyle = cssColor(PALETTE.gold);
-      ctx.font = `700 54px ${FONT_NUM}`;
-      ctx.fillText('PAUSED', canvas.width / 2, 110);
+      ctx.font = `800 72px ${FONT_UI}`;
+      ctx.fillText('일시정지', w / 2, 116);
       ctx.fillStyle = cssColor(PALETTE.fg2);
-      ctx.font = `700 38px ${FONT_NUM}`;
-      ctx.fillText(`TIME ${time}s`, canvas.width / 2, 190);
+      ctx.font = `700 52px ${FONT_NUM}`;
+      ctx.fillText(time, w / 2, 192);
     } else if (mode === 'reload') {
+      ctx.textAlign = 'center';
       ctx.fillStyle = cssColor(PALETTE.warn);
-      ctx.font = `700 50px ${FONT_NUM}`;
-      ctx.fillText('RELOADING', canvas.width / 2, 110);
-      ctx.fillStyle = cssColor(PALETTE.fg2);
-      ctx.font = `700 38px ${FONT_NUM}`;
-      ctx.fillText(`TIME ${time}s`, canvas.width / 2, 190);
+      ctx.font = `800 72px ${FONT_UI}`;
+      ctx.fillText('재장전', w / 2, 116);
+      drawCells(reloadStep, '#dff6ff');
     } else {
-      // 상단: 내 점수 vs 상대방 점수
-      ctx.fillStyle = borderColor;
-      ctx.font = `700 46px ${FONT_NUM}`;
-      ctx.fillText(`P${playerId} ${myStats.score.toLocaleString()}`, canvas.width * 0.3, 92);
+      // 왼쪽: 남은 시간 (10초 이하이면 빨강)
+      ctx.textAlign = 'left';
+      ctx.fillStyle = cssColor(PALETTE.fg2);
+      ctx.font = `700 28px ${FONT_UI}`;
+      ctx.fillText('남은 시간', 40, 56);
+      ctx.fillStyle = isWarning ? cssColor(PALETTE.danger) : '#ffffff';
+      ctx.font = `700 112px ${FONT_NUM}`;
+      ctx.fillText(time, 34, 166);
 
-      ctx.fillStyle = cssColor(PALETTE.ai);
-      ctx.font = `700 46px ${FONT_NUM}`;
-      ctx.fillText(`RIVAL ${rivalStats.score.toLocaleString()}`, canvas.width * 0.72, 92);
+      // 오른쪽: 내 점수(팀 색) · 상대 점수
+      ctx.textAlign = 'right';
+      ctx.fillStyle = cssColor(PALETTE.fg2);
+      ctx.font = `700 28px ${FONT_UI}`;
+      ctx.fillText('내 점수', w - 40, 56);
+      ctx.fillStyle = teamCss;
+      ctx.font = `700 96px ${FONT_NUM}`;
+      ctx.fillText(String(myStats.score), w - 40, 150);
+      ctx.fillStyle = cssColor(PALETTE.fg2);
+      ctx.font = `700 30px ${FONT_UI}`;
+      ctx.fillText(`상대 ${rivalStats.score}`, w - 40, 222);
 
-      // 하단: 탄약 및 시간
-      ctx.fillStyle = myStats.ammo <= 2 ? cssColor(PALETTE.danger) : teamCss;
-      ctx.font = `700 40px ${FONT_NUM}`;
-      ctx.fillText(`AMMO ${myStats.ammo}/${myStats.maxAmmo}  ·  TIME ${time}s`, canvas.width / 2, 188);
+      // 아래 왼쪽: 탄약 칸 (3발 이하이면 경고색)
+      drawCells(myStats.ammo, myStats.ammo <= 3 ? cssColor(PALETTE.warn) : teamCss);
     }
 
     rig.displayTexture.needsUpdate = true;
@@ -1324,6 +1192,37 @@ export class ShootingArenaEngine {
     return { target: best, point: bestHit.point, distance: bestHit.distance };
   }
 
+  /**
+   * 조준선(총구 → 조준 지점)과 조준점·고정 링.
+   * PC 화면에서 내 총의 조준점은 2D 조준점(AimReticle)이 보여 주므로 3D 점·링은 숨김
+   */
+  private updateAimVisual(b: BlasterRig, isMine: boolean, inVR: boolean) {
+    const v = b.visual;
+    b.group.getWorldPosition(this._tempVec1);
+    b.group.getWorldQuaternion(this._tempQuat1);
+    this._aimDir.set(0, 0, -1).applyQuaternion(this._tempQuat1);
+    const locked = this.aimProbe.probe(this._tempVec1, this._aimDir, this.activeTargets, this._aimPoint);
+    b.group.localToWorld(this._muzzle.copy(MUZZLE_LOCAL));
+    const u = v.aimMaterial.uniforms;
+    (u.uStart.value as THREE.Vector3).copy(this._muzzle);
+    (u.uEnd.value as THREE.Vector3).copy(this._aimPoint);
+
+    const showDot = inVR || !isMine;
+    v.aimDot.visible = showDot;
+    v.lockRing.visible = showDot && locked;
+    if (!showDot) return;
+    // 거리와 상관없이 비슷한 크기로 보이게 (점 약 0.35도, 링 약 1.3도)
+    const dist = Math.max(0.5, this._aimPoint.distanceTo(this._camWorld));
+    v.aimDot.position.copy(this._aimPoint);
+    v.aimDot.quaternion.copy(this._camQuat);
+    v.aimDot.scale.setScalar(dist * (locked ? 0.004 : 0.006));
+    if (locked) {
+      v.lockRing.position.copy(this._aimPoint);
+      v.lockRing.quaternion.copy(this._camQuat);
+      v.lockRing.scale.setScalar(dist * 0.022 * (1 + 0.08 * Math.sin(this.clock.elapsedTime * 9)));
+    }
+  }
+
   /** 총구 섬광 + 히트스캔 빔 (총구 끝에서 맞은 곳, 빗나가면 먼 곳까지) */
   private showShot(blaster: BlasterRig, forward: THREE.Vector3, color: number, hitPoint: THREE.Vector3 | null) {
     blaster.group.localToWorld(this._muzzle.copy(MUZZLE_LOCAL));
@@ -1378,7 +1277,7 @@ export class ShootingArenaEngine {
     if (myStats.ammo === myStats.maxAmmo) return;
 
     myStats.isReloading = true;
-    this.reloadTimer = 1.2;
+    this.reloadTimer = RELOAD_TIME;
     this.soundManager.playReload();
     this.notifyStats();
   }
@@ -1611,6 +1510,7 @@ export class ShootingArenaEngine {
     this.notifyStats();
     this.notifyVersusStats();
     if (this.onPauseChange) this.onPauseChange(this.isPaused);
+    this.scoreboard.cue('go');
     this.voiceManager.speak('GAME_START');
     if (this.onGameStarted) {
       this.onGameStarted();
@@ -1711,6 +1611,7 @@ export class ShootingArenaEngine {
       (this.clientRole === 'P1' && winner === 'P1') ||
       (this.clientRole === 'P2' && winner === 'P2');
     const aborted = ABORT_REASONS.includes(winner);
+    if (!aborted) this.scoreboard.cue('timeUp');
     if (aborted) {
       this.voiceManager.speak('GAME_OVER');
     } else if (amWinner) {
@@ -1963,25 +1864,38 @@ export class ShootingArenaEngine {
       this.spectatorCam.update(delta, this._tempVec1, this._tempVec2);
     }
 
-    // 4. 반동 회복
-    [this.p1Blaster, this.p2Blaster].forEach((b) => {
+    // 4. 반동 회복, 탄약 칸, 조준선·조준점 (사격과 같은 광선·판정 메시로 실제 조준 지점을 계산)
+    this.camera.getWorldPosition(this._camWorld);
+    this.camera.getWorldQuaternion(this._camQuat);
+    const mySlot = this.localSlot;
+    // 상대 선수 자세는 받은 자세를 부드럽게 따라감 (이 화면의 AI가 움직이는 자리는 제외)
+    ([1, 2] as PlayerSlot[]).forEach((slot) => {
+      if (slot === mySlot) return;
+      if (this.isPlaying && this.ownsAIRival() && slot === this.aiSlot) return;
+      this.poseSmooth[slot].head.update(slot === 1 ? this.p1Head : this.p2Head, delta);
+      this.poseSmooth[slot].blaster.update((slot === 1 ? this.p1Blaster : this.p2Blaster).group, delta);
+    });
+    const aiSeat = this.aiSeat();
+    this.updateAvatarTags(aiSeat);
+    ([1, 2] as PlayerSlot[]).forEach((slot) => {
+      const b = slot === 1 ? this.p1Blaster : this.p2Blaster;
       if (b.recoilOffset > 0) {
         b.recoilOffset = Math.max(0, b.recoilOffset - delta * 0.4);
       }
-
-      // 착탄점 레이저 도트 추적 (임시 벡터 재사용)
-      b.group.getWorldPosition(this._tempVec1);
-      b.group.getWorldQuaternion(this._tempQuat1);
-      this._tempVec2.set(0, 0, -1).applyQuaternion(this._tempQuat1).normalize();
-      b.laserDot.position.copy(this._tempVec1).addScaledVector(this._tempVec2, 30);
-      b.laserDot.lookAt(this._tempVec1);
+      const isMine = slot === mySlot;
+      // 내 총은 조준 각도에 반동이 들어 있고, 상대 총은 겉모습만 튀어 오름
+      b.visual.root.rotation.x = isMine ? 0 : b.recoilOffset;
+      const s = this.statsFor(slot);
+      // 다른 선수의 탄약은 화면끼리 주고받지 않으므로 내 총만 실제 탄약을 보여 줌
+      const reloadProgress = isMine && s.isReloading ? THREE.MathUtils.clamp(1 - this.reloadTimer / RELOAD_TIME, 0, 1) : null;
+      BlasterFactory.setAmmo(b.visual, b.primaryColor, isMine ? s.ammo : s.maxAmmo, reloadProgress);
+      this.updateAimVisual(b, isMine, inVR);
     });
 
     // 5. 표적 이동 및 애니메이션 (일시정지 중에는 표적·프로펠러가 멈춤)
     const frozen = this.isPlaying && this.isPaused;
     const targetDt = frozen ? 0 : delta;
     if (!frozen) this.drones.update(delta);
-    this.camera.getWorldPosition(this._camWorld);
     for (let i = this.activeTargets.length - 1; i >= 0; i--) {
       const t = this.activeTargets[i];
 
@@ -2051,10 +1965,24 @@ export class ShootingArenaEngine {
     // 6. 사격·명중 효과(빔·불꽃·파편·점수 팝업)와 경기장 배경(별 반짝임·게이트 회전·바닥 물결)
     this.effects.update(delta, this.camera);
     this.arena.update(delta);
+    this.scoreboard.update(
+      {
+        mode: !this.isPlaying ? 'idle' : this.isPaused ? 'paused' : 'playing',
+        seconds: this.roundTimer,
+        p1: this.stats.score,
+        p2: this.p2Stats.score,
+        warning: this.isPlaying && this.roundTimer <= 10,
+        label1: aiSeat === 1 ? VR_TEXT.ai : VR_TEXT.p1,
+        label2: aiSeat === 2 ? VR_TEXT.ai : VR_TEXT.p2,
+      },
+      this.clock.elapsedTime
+    );
+    this.scoreboard.tick(delta);
 
     // 7. 렌더
     this.renderer.render(this.scene, this.camera);
     this.perfPanel?.update();
+    this.updateVRPerfText(inVR);
   };
 
   private onPointerMove = (e: PointerEvent) => {
@@ -2173,32 +2101,22 @@ export class ShootingArenaEngine {
     this.labels.dispose();
     this.haptics.dispose();
 
-    // 5. 블래스터 텍스처 및 지오메트리 해제
+    // 5. 블래스터 (겉모습·OLED·조준 표시의 지오메트리·재질·텍스처는 공장이 한꺼번에 해제)
     [this.p1Blaster, this.p2Blaster].forEach((b) => {
-      if (b) {
-        b.displayTexture.dispose();
-        b.group.traverse((c) => {
-          if (c instanceof THREE.Mesh || c instanceof THREE.Line) {
-            c.geometry.dispose();
-            if (Array.isArray(c.material)) c.material.forEach((m) => m.dispose());
-            else c.material.dispose();
-          }
-        });
-        // 착탄점 도트는 블래스터가 아니라 장면에 붙어 있어 따로 정리
-        this.scene.remove(b.laserDot);
-        b.laserDot.geometry.dispose();
-        (b.laserDot.material as THREE.Material).dispose();
-      }
+      if (!b) return;
+      b.group.removeFromParent();
+      b.visual.aimBeam.removeFromParent();
+      b.visual.aimDot.removeFromParent();
+      b.visual.lockRing.removeFromParent();
     });
+    this.blasterFactory.dispose();
+    this.avatars.dispose();
 
-    // 6. 결과판 텍스처와 환경맵 해제
-    if (this.vrPromptMesh) {
-      const promptMat = this.vrPromptMesh.material as THREE.MeshBasicMaterial;
-      promptMat.map?.dispose();
-      promptMat.dispose();
-      this.vrPromptMesh.geometry.dispose();
-    }
+    // 6. 결과판·점수판과 경기장 배경 해제
+    this.resultPanel.dispose();
+    this.scoreboard.dispose();
     this.arena.dispose();
+    this.texts.dispose();
 
     if (this.vrButtonElement && this.vrButtonElement.parentNode) {
       this.vrButtonElement.parentNode.removeChild(this.vrButtonElement);

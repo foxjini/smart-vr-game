@@ -10,6 +10,8 @@ export class PerfPanel {
   private frames = 0;
   private windowStart = performance.now();
   private maxCalls = 0;
+  /** 마지막 측정값 (VR 안 표시용, 0.5초마다 바뀌고 그때마다 sample이 1 늘어남) */
+  last = { fps: 0, calls: 0, maxCalls: 0, sample: 0 };
 
   static isEnabled(): boolean {
     if (typeof window === 'undefined') return false;
@@ -46,6 +48,7 @@ export class PerfPanel {
     if (elapsed < 500) return;
 
     const fps = Math.round((this.frames * 1000) / elapsed);
+    this.last = { fps, calls: info.render.calls, maxCalls: this.maxCalls, sample: this.last.sample + 1 };
     const vr = this.renderer.xr.isPresenting ? ' (양 눈 합계)' : '';
     this.el.textContent =
       `FPS ${fps}\n` +

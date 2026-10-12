@@ -63,8 +63,9 @@ export const ARENA_LOOKS: Record<ThemeType, ArenaLook> = {
       hemiIntensity: 1.1,
       key: 0xdde8ff,
       keyIntensity: 1.5,
-      rim: PALETTE.p2,
-      rimIntensity: 0.9,
+      // 림 라이트는 팀 색(시안·마젠타)과 겹치지 않는 보라 (1P 총에 2P 색 반사가 비치지 않게)
+      rim: 0x8f7dff,
+      rimIntensity: 0.8,
     },
     env: {
       base: 0x070d1c,
@@ -115,8 +116,8 @@ export const ARENA_LOOKS: Record<ThemeType, ArenaLook> = {
       hemiIntensity: 1.0,
       key: 0xffe2d0,
       keyIntensity: 1.3,
-      rim: PALETTE.p1,
-      rimIntensity: 1.0,
+      rim: 0xb0c4ff,
+      rimIntensity: 0.9,
     },
     env: {
       base: 0x0d0714,
