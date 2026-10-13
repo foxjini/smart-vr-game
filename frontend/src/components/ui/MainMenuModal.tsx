@@ -24,6 +24,7 @@ import { ThemeType, TargetShape, Difficulty, ClientRole, ConnectionIssue } from 
 import {
   DIFFICULTY_HINT,
   DIFFICULTY_NAME,
+  DIFFICULTY_ORDER,
   KEYWORDS_1PT,
   KEYWORDS_2PT,
   KEYWORDS_MINUS,
@@ -54,6 +55,8 @@ interface MainMenuModalProps {
   currentShape: TargetShape;
   currentDifficulty: Difficulty;
   onSelectDifficulty?: (diff: Difficulty) => void;
+  /** 경기 설정을 방 전체(1P·2P·관전)가 함께 씀 (난이도를 바꾸면 모든 화면이 바뀜) */
+  roomSync?: boolean;
   highScore: number;
   clientRole?: ClientRole;
   versusMode?: 'VERSUS_PVP' | 'VERSUS_AI';
@@ -80,6 +83,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   currentShape,
   currentDifficulty,
   onSelectDifficulty,
+  roomSync = false,
   highScore,
   clientRole = 'P1',
   versusMode = 'VERSUS_AI',
@@ -208,7 +212,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
               shape={currentShape}
             />
           )}
-          {step === 'intro' && <RulesStep difficulty={currentDifficulty} onSelectDifficulty={onSelectDifficulty} />}
+          {step === 'intro' && <RulesStep difficulty={currentDifficulty} onSelectDifficulty={onSelectDifficulty} roomSync={roomSync} />}
           {step === 'guide' && <ControlsStep />}
         </div>
 
@@ -357,7 +361,15 @@ function WelcomeStep({
   );
 }
 
-function RulesStep({ difficulty, onSelectDifficulty }: { difficulty: Difficulty; onSelectDifficulty?: (d: Difficulty) => void }) {
+function RulesStep({
+  difficulty,
+  onSelectDifficulty,
+  roomSync,
+}: {
+  difficulty: Difficulty;
+  onSelectDifficulty?: (d: Difficulty) => void;
+  roomSync: boolean;
+}) {
   const rules = [
     { title: '60초 타임어택', desc: '날아다니는 드론 표적을 60초 동안 맞혀요' },
     { title: '먼저 맞힌 사람이 점수', desc: '같은 표적은 먼저 맞힌 사람만 점수를 얻어요' },
@@ -408,15 +420,25 @@ function RulesStep({ difficulty, onSelectDifficulty }: { difficulty: Difficulty;
         </div>
       </Panel>
       <Panel solid className="p-5">
-        <p className="text-[13px] font-bold tracking-wide text-fg-3">난이도</p>
-        <p className="mt-2 text-[14px] leading-relaxed text-fg-2">표적의 속도·크기와 AI 라이벌의 실력이 함께 바뀌어요.</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[13px] font-bold tracking-wide text-fg-3">난이도</p>
+          {roomSync && (
+            <Pill tone="neutral" size="sm">
+              모든 화면 공통
+            </Pill>
+          )}
+        </div>
+        <p className="mt-2 text-[14px] leading-relaxed text-fg-2">
+          표적의 속도·크기와 AI 라이벌의 실력이 함께 바뀌어요.
+          {roomSync && ' 고르면 1P·2P·관전 화면이 모두 함께 바뀌어요.'}
+        </p>
         <Segmented
           vertical
           label="난이도"
           className="mt-3"
           value={difficulty}
           onChange={(d) => onSelectDifficulty?.(d)}
-          options={(['easy', 'normal', 'hard'] as Difficulty[]).map((d) => ({ value: d, label: DIFFICULTY_NAME[d], hint: DIFFICULTY_HINT[d] }))}
+          options={DIFFICULTY_ORDER.map((d) => ({ value: d, label: DIFFICULTY_NAME[d], hint: DIFFICULTY_HINT[d] }))}
         />
       </Panel>
     </div>

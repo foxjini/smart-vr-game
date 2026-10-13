@@ -15,6 +15,7 @@ interface GameOverModalProps {
   result: MatchResultSummary;
   clientRole?: ClientRole;
   highScore: number;
+  /** 지금 경기 설정 (결과에 경기 당시 값이 있으면 그 값을 씀) */
   difficulty: Difficulty;
   theme: ThemeType;
   onRestart: () => void;
@@ -31,8 +32,8 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   result,
   clientRole = 'P1',
   highScore,
-  difficulty,
-  theme,
+  difficulty: currentDifficulty,
+  theme: currentTheme,
   onRestart,
   notice,
   onOpenSettings,
@@ -48,6 +49,9 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   const outcome: 'win' | 'lose' | 'draw' = winSlot === null ? 'draw' : winSlot === mySlot ? 'win' : 'lose';
   const isNewRecord = stats.score > 0 && stats.score >= highScore;
   const isTopTen = stats.score > 0 && LeaderboardManager.getInstance().isTopTen(stats.score);
+  // 경기 당시 설정 (경기가 끝난 뒤 다른 화면에서 설정을 바꿔도 이 결과·순위표 기록은 그대로)
+  const difficulty = result.difficulty ?? currentDifficulty;
+  const theme = result.theme ?? currentTheme;
   const aiLabel = DIFFICULTY_NAME[difficulty];
 
   const handleSubmitScore = (e: React.FormEvent) => {

@@ -36,7 +36,6 @@ export interface BroadcastOverlayProps {
   /** TV 소리 상태 (꺼 둠·브라우저가 막음이면 운영 버튼이 숨은 동안 오른쪽 위에 표시) */
   tvSound?: TvSoundState;
   onToggleTvSound?: () => void;
-  onStartGame: () => void;
   onPauseGame: () => void;
   onAbortGame?: () => void;
   onOpenSettings: () => void;
@@ -81,7 +80,6 @@ export function BroadcastOverlay({
   readyInfo = NO_READY,
   tvSound = 'unknown',
   onToggleTvSound,
-  onStartGame,
   onPauseGame,
   onAbortGame,
   onOpenSettings,
@@ -109,7 +107,7 @@ export function BroadcastOverlay({
             cameraMode={spectatorCameraMode}
           />
         ) : result ? (
-          <BroadcastResult key={result.endedAt} result={result} until={resultUntil} difficulty={difficulty} />
+          <BroadcastResult key={result.endedAt} result={result} until={resultUntil} difficulty={result.difficulty ?? difficulty} />
         ) : (
           <AttractScreen
             isDemo={isDemo && isPlaying}
@@ -124,7 +122,7 @@ export function BroadcastOverlay({
         {!live && <ReadyStrip readyInfo={readyInfo} isP1Connected={isP1Connected} isP2Connected={isP2Connected} />}
       </div>
 
-      {/* 운영 버튼 (마우스를 움직이면 나타남) */}
+      {/* 운영 버튼 (마우스를 움직이면 나타남). 경기는 선수가 준비해야 시작하므로 [경기 시작]은 없음 */}
       <div
         className={cx(
           'absolute right-5 top-5 flex flex-col items-end gap-2 transition-[opacity,visibility] duration-500',
@@ -135,9 +133,7 @@ export function BroadcastOverlay({
           mode="spectator"
           matchRunning={live}
           isPaused={isPaused}
-          canStart={!live && (isP1Connected || isP2Connected)}
           isVRSupported={false}
-          onStartGame={onStartGame}
           onPauseGame={onPauseGame}
           onAbortGame={onAbortGame}
           onOpenSettings={onOpenSettings}

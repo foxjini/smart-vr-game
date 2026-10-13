@@ -5,8 +5,17 @@ import { Check, Mic, Monitor, Settings } from 'lucide-react';
 import { ThemeType, TargetShape, Difficulty, SoundPresetType, ClientRole } from '@/types';
 import { VoiceManager } from '@/core/audio/VoiceManager';
 import { DEMO_FX_LEVEL } from '@/core/audio/SoundManager';
-import { DIFFICULTY_HINT, DIFFICULTY_NAME, ROLE_NAME, SHAPE_NAME, THEME_NAME } from '@/constants/labels';
-import { Button, ModalShell, Segmented, Slider } from '@/components/ui/kit';
+import {
+  DIFFICULTY_HINT,
+  DIFFICULTY_NAME,
+  DIFFICULTY_ORDER,
+  ROLE_NAME,
+  SHAPE_NAME,
+  SHAPE_ORDER,
+  THEME_NAME,
+  THEME_ORDER,
+} from '@/constants/labels';
+import { Button, ModalShell, Segmented, Slider, cx } from '@/components/ui/kit';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -17,6 +26,10 @@ interface SettingsModalProps {
   onSelectTheme: (theme: ThemeType) => void;
   onSelectShape: (shape: TargetShape) => void;
   onSelectDifficulty: (diff: Difficulty) => void;
+  /** 경기 설정을 방 전체(1P·2P·관전)가 함께 씀 (서버 연결 + 방 설정 지원) */
+  roomSync?: boolean;
+  /** 실제 경기 중이라 경기 설정을 바꿀 수 없음 */
+  roomLocked?: boolean;
   serverHost: string;
   onUpdateServerHost: (host: string) => void;
   sensitivity: number;
@@ -34,10 +47,6 @@ interface SettingsModalProps {
   /** 관전 TV 소리를 꺼 둠 (미리 듣기도 들리지 않음을 알림) */
   soundMuted?: boolean;
 }
-
-const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
-const THEMES: ThemeType[] = ['cyber', 'space', 'city'];
-const SHAPES: TargetShape[] = ['drone', 'sphere', 'cube', 'disc'];
 
 const SOUND_OPTIONS: { value: SoundPresetType; label: string; hint: string }[] = [
   { value: 'laser', label: 'SF 레이저', hint: '미래형 광선 소리' },
@@ -64,7 +73,7 @@ function Field({ label, note, children }: { label: string; note?: string; childr
   );
 }
 
-/** 환경설정: 경기 · 소리 · 조작 · 이 기기 */
+/** 환경설정: 경기 설정(모든 화면 공통) · 소리 · 조작(선수 화면만) · 이 기기 */
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -74,6 +83,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSelectTheme,
   onSelectShape,
   onSelectDifficulty,
+  roomSync = false,
+  roomLocked = false,
   serverHost,
   onUpdateServerHost,
   sensitivity,
@@ -123,20 +134,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
     >
       <div className="flex flex-col gap-6">
-        <Section title="경기">
-          <Field label="난이도" note="표적 속도·크기와 AI 라이벌의 실력이 함께 바뀌어요. 친구와 대결하면 경기를 시작한 쪽의 난이도로 맞춰져요.">
+        <Section title={roomSync ? '경기 설정 (모든 화면 공통)' : '경기 설정'}>
+          <p
+            data-testid="room-settings-note"
+            className={cx('text-[13px] leading-relaxed', roomLocked ? 'font-semibold text-warn' : 'text-fg-3')}
+          >
+            {roomLocked
+              ? '경기 중에는 바꿀 수 없어요. 경기가 끝나면 바꿀 수 있어요.'
+              : roomSync
+                ? '여기서 바꾸면 1P·2P·관전 화면이 모두 함께 바뀌어요.'
+                : '지금은 이 기기 화면에만 적용돼요.'}
+          </p>
+          <Field
+            label="난이도"
+            note={
+              roomSync
+                ? '표적 속도·크기와 AI 라이벌의 실력이 함께 바뀌어요.'
+                : '표적 속도·크기와 AI 라이벌의 실력이 함께 바뀌어요. 친구와 대결하면 먼저 시작한 쪽의 난이도로 맞춰져요.'
+            }
+          >
             <Segmented
               label="난이도"
               value={currentDifficulty}
               onChange={onSelectDifficulty}
-              options={DIFFICULTIES.map((d) => ({ value: d, label: DIFFICULTY_NAME[d], hint: DIFFICULTY_HINT[d] }))}
+              disabled={roomLocked}
+              options={DIFFICULTY_ORDER.map((d) => ({ value: d, label: DIFFICULTY_NAME[d], hint: DIFFICULTY_HINT[d] }))}
             />
           </Field>
-          <Field label="경기장 테마" note="이 기기 화면에만 적용돼요.">
-            <Segmented label="경기장 테마" value={currentTheme} onChange={onSelectTheme} options={THEMES.map((t) => ({ value: t, label: THEME_NAME[t] }))} />
+          <Field
+            label="경기장 테마"
+            note={roomSync ? '바꾸는 순간 경기장을 새로 지어 화면이 잠깐 멈춰요. 선수가 헤드셋을 쓰기 전에 바꾸세요.' : undefined}
+          >
+            <Segmented
+              label="경기장 테마"
+              value={currentTheme}
+              onChange={onSelectTheme}
+              disabled={roomLocked}
+              options={THEME_ORDER.map((t) => ({ value: t, label: THEME_NAME[t] }))}
+            />
           </Field>
           <Field label="표적 모양">
-            <Segmented label="표적 모양" value={currentShape} onChange={onSelectShape} options={SHAPES.map((s) => ({ value: s, label: SHAPE_NAME[s] }))} />
+            <Segmented
+              label="표적 모양"
+              value={currentShape}
+              onChange={onSelectShape}
+              disabled={roomLocked}
+              options={SHAPE_ORDER.map((s) => ({ value: s, label: SHAPE_NAME[s] }))}
+            />
           </Field>
         </Section>
 
@@ -183,9 +227,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
         </Section>
 
-        <Section title="조작 (PC)">
-          <Slider label="조준 감도" value={sensitivity} min={0.5} max={2.5} step={0.1} onChange={onUpdateSensitivity} format={(v) => `${v.toFixed(1)}배`} />
-        </Section>
+        {/* 관전 화면은 조작하지 않으므로 선수 화면에만 */}
+        {clientRole !== 'SPECTATOR' && (
+          <Section title="조작 (PC)">
+            <Slider label="조준 감도" value={sensitivity} min={0.5} max={2.5} step={0.1} onChange={onUpdateSensitivity} format={(v) => `${v.toFixed(1)}배`} />
+          </Section>
+        )}
 
         <Section title="이 기기">
           <Field

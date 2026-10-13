@@ -1,4 +1,5 @@
-import { SystemStatus, StickData, ClientRole, PlayerPose, TargetSpawnPacket, Difficulty, MatchInfo, ConnectionIssue } from '@/types';
+import { SystemStatus, StickData, ClientRole, PlayerPose, TargetSpawnPacket, Difficulty, MatchInfo, ConnectionIssue, RoomSettings } from '@/types';
+import { isDifficulty, isTargetShape, isTheme } from '@/constants/labels';
 
 export type InputMode = 'HYBRID' | 'STANDALONE' | 'WEBSOCKET_ONLY';
 
@@ -9,17 +10,16 @@ const CLOSE_CODE_SLOT_BUSY = 4002;
 /** 자리가 빌 때까지 다시 시도하는 간격(ms) */
 const SLOT_BUSY_RETRY_MS = 5000;
 
-const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
-
 function parseMatchInfo(data: Record<string, unknown>): MatchInfo {
-  const difficulty = DIFFICULTIES.find((d) => d === data.difficulty);
   return {
     matchId: Number(data.matchId ?? 0),
     isMatchActive: Boolean(data.isMatchActive ?? true),
     isPaused: Boolean(data.isPaused),
     duration: Number(data.duration ?? 60),
     remaining: Number(data.remaining ?? data.duration ?? 60),
-    difficulty,
+    difficulty: isDifficulty(data.difficulty) ? data.difficulty : undefined,
+    theme: isTheme(data.theme) ? data.theme : undefined,
+    targetShape: isTargetShape(data.targetShape) ? data.targetShape : undefined,
     p1Score: Number(data.p1Score ?? 0),
     p2Score: Number(data.p2Score ?? 0),
   };
@@ -51,7 +51,13 @@ export class InputManager {
   public p2Ready: boolean = false;
   /** 한 명만 준비했을 때 자동 시작 예정 시각 (Date.now() 기준 ms, 대기 중이 아니면 0) */
   public readyDeadlineAt: number = 0;
-  public currentDifficulty: Difficulty = 'normal';
+  /**
+   * 서버가 경기 설정(테마·표적 모양·난이도)을 방 전체로 맞추는지.
+   * 옛 서버면 false라 설정은 기기마다 따로 적용 (readySupported와 같은 방식으로 감지)
+   */
+  public roomSettingsSupported: boolean = false;
+  /** 서버가 알려 준 지금 경기 설정 (옛 서버이거나 아직 받지 못했으면 null) */
+  public roomSettings: RoomSettings | null = null;
 
   public systemStatus: SystemStatus = {
     pico_connected: false,
@@ -71,7 +77,8 @@ export class InputManager {
   public onFireCallback?: () => void;
   public onReloadCallback?: () => void;
   public onStatusChange?: (status: SystemStatus, wsConnected: boolean) => void;
-  public onDifficultyChange?: (difficulty: Difficulty) => void;
+  /** 방의 경기 설정을 받았을 때 (접속할 때마다 한 번, 그 뒤에는 바뀔 때만) */
+  public onRoomSettingsChange?: (settings: RoomSettings) => void;
 
   // 멀티플레이어 / 옵저버 콜백
   public onClientAssigned?: (role: ClientRole, playerId: number | null) => void;
@@ -291,8 +298,11 @@ export class InputManager {
     this.connect();
   }
 
-  /** client_assigned·room_state에 함께 오는 방 정보 (접속한 자리, 경기 전 준비 상태) */
-  private applyRoomInfo(data: Record<string, unknown>) {
+  /**
+   * client_assigned·room_state에 함께 오는 방 정보 (접속한 자리, 경기 전 준비 상태, 경기 설정).
+   * 경기 설정이 바뀌었으면 true
+   */
+  private applyRoomInfo(data: Record<string, unknown>): boolean {
     this.isP1Connected = Boolean(data.p1Connected);
     this.isP2Connected = Boolean(data.p2Connected);
     this.spectatorCount = Number(data.spectatorCount || 0);
@@ -302,6 +312,24 @@ export class InputManager {
     this.p2Ready = Boolean(data.p2Ready);
     const remaining = typeof data.readyRemaining === 'number' ? data.readyRemaining : null;
     this.readyDeadlineAt = remaining !== null ? Date.now() + remaining * 1000 : 0;
+    this.roomSettingsSupported = 'theme' in data;
+    return this.readRoomSettings(data);
+  }
+
+  /** 서버가 보낸 경기 설정을 보관 (방 설정을 지원하지 않는 서버면 지움). 값이 바뀌었으면 true */
+  private readRoomSettings(data: Record<string, unknown>): boolean {
+    if (!('theme' in data)) {
+      this.roomSettings = null;
+      return false;
+    }
+    const prev = this.roomSettings;
+    const next: RoomSettings = {
+      theme: isTheme(data.theme) ? data.theme : (prev?.theme ?? 'cyber'),
+      targetShape: isTargetShape(data.targetShape) ? data.targetShape : (prev?.targetShape ?? 'drone'),
+      difficulty: isDifficulty(data.difficulty) ? data.difficulty : (prev?.difficulty ?? 'normal'),
+    };
+    this.roomSettings = next;
+    return !prev || prev.theme !== next.theme || prev.targetShape !== next.targetShape || prev.difficulty !== next.difficulty;
   }
 
   private clearReady() {
@@ -329,6 +357,11 @@ export class InputManager {
       if (this.onClientAssigned) {
         this.onClientAssigned(this.clientRole, this.playerId);
       }
+      // 접속할 때마다 방의 경기 설정을 한 번 알림 (연결이 끊긴 동안 이 기기에서만 바꾼 설정도 방 설정으로 맞춤).
+      // 진행 중인 경기에 합류하는 것(onMatchState)보다 먼저 적용
+      if (this.roomSettings && this.onRoomSettingsChange) {
+        this.onRoomSettingsChange(this.roomSettings);
+      }
       if (this.onMatchState) {
         this.onMatchState(parseMatchInfo(data));
       }
@@ -337,8 +370,11 @@ export class InputManager {
     }
 
     if (type === 'room_state') {
-      this.applyRoomInfo(data);
+      const settingsChanged = this.applyRoomInfo(data);
       this.systemStatus.spectator_count = this.spectatorCount;
+      if (settingsChanged && this.roomSettings && this.onRoomSettingsChange) {
+        this.onRoomSettingsChange(this.roomSettings);
+      }
       if (this.onRoomStateChange) {
         this.onRoomStateChange(data);
       }
@@ -389,6 +425,8 @@ export class InputManager {
     if (type === 'match_started') {
       // 경기가 시작되면 준비는 끝남 (그 전에 만들어진 room_state가 늦게 와도 경기 중에는 준비 표시를 쓰지 않음)
       this.clearReady();
+      // 경기 설정 보관값도 이 경기의 값으로 (화면에는 엔진이 경기를 시작하며 적용)
+      if ('theme' in data) this.readRoomSettings(data);
       if (this.onMatchStarted) {
         this.onMatchStarted(parseMatchInfo(data));
       }
@@ -474,6 +512,14 @@ export class InputManager {
   /** 경기 전 준비 완료(ready=true) 또는 취소. 서버가 둘 다 준비되면(혼자면 바로) 경기를 시작함 */
   public sendPlayerReady(ready: boolean, duration?: number, difficulty?: Difficulty) {
     return this.send({ type: 'player_ready', ready, duration, difficulty });
+  }
+
+  /**
+   * 경기 설정 바꾸기 요청 (바꿀 항목만). 서버가 room_state로 모든 화면(보낸 화면 포함)에 알림.
+   * 경기 중에는 서버가 바꾸지 않고 보낸 화면에만 지금 값을 돌려줌
+   */
+  public sendRoomSettings(patch: Partial<RoomSettings>) {
+    return this.send({ type: 'set_room_settings', ...patch });
   }
 
   public sendMatchPause(matchId: number) {

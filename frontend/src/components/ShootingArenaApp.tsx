@@ -26,7 +26,9 @@ import {
   SpectatorCameraMode,
   VersusMatchStats,
   ConnectionIssue,
+  RoomSettings,
 } from '@/types';
+import { isTheme } from '@/constants/labels';
 
 interface NavigatorWithXR {
   xr?: {
@@ -87,17 +89,35 @@ function readRecentMatches(): MatchResultSummary[] {
   }
 }
 
-/** 경기장 테마는 기기마다 저장 (서버로 맞추지 않음, 처음에는 모든 기기가 사이버) */
+/**
+ * 이 기기에서 마지막으로 적용한 경기장 테마. 경기 설정은 방 전체 공통(서버가 기억)이지만,
+ * 다음에 화면을 열 때 처음부터 그 테마로 지어 서버 설정을 받았을 때 경기장을 다시 짓지 않게 함
+ * (서버에 연결되지 않았거나 옛 서버면 이 값이 그대로 쓰임)
+ */
 const THEME_KEY = 'cyber_strike_theme_v1';
 
 function readSavedTheme(): ThemeType {
   try {
     const saved = localStorage.getItem(THEME_KEY);
-    if (saved === 'cyber' || saved === 'space' || saved === 'city') return saved;
+    if (isTheme(saved)) return saved;
   } catch {
     // 저장소를 쓸 수 없으면 기본 테마
   }
   return 'cyber';
+}
+
+function saveTheme(theme: ThemeType) {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // 저장하지 못해도 이번 접속에서는 적용됨
+  }
+}
+
+/** 시작 경기 설정: 이미 받아 둔 방 설정(화면을 다시 만든 경우) → 이 기기에 저장된 테마와 기본값 */
+function readInitialSettings(): RoomSettings {
+  const room = InputManager.getInstance().roomSettings;
+  return room ?? { theme: readSavedTheme(), targetShape: 'drone', difficulty: 'normal' };
 }
 
 /** 소리 설정도 기기마다 저장 (관전 TV는 TV대로, 선수 PC는 선수 PC대로) */
@@ -172,9 +192,13 @@ export default function ShootingArenaApp() {
   // 게임 설정 및 상태
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [currentTheme, setCurrentTheme] = useState<ThemeType>(readSavedTheme);
-  const [currentShape, setCurrentShape] = useState<TargetShape>('drone');
-  const [currentDifficulty, setCurrentDifficulty] = useState<Difficulty>('normal');
+  // 경기 설정 (화면 표시용. 실제 값은 엔진이 가지고, 바뀌면 onSettingsApplied로 맞춤)
+  const [initialSettings] = useState<RoomSettings>(readInitialSettings);
+  const [currentTheme, setCurrentTheme] = useState<ThemeType>(initialSettings.theme);
+  const [currentShape, setCurrentShape] = useState<TargetShape>(initialSettings.targetShape);
+  const [currentDifficulty, setCurrentDifficulty] = useState<Difficulty>(initialSettings.difficulty);
+  /** 서버가 경기 설정을 방 전체로 맞추는지 (옛 서버면 false라 설정은 이 기기에만 적용) */
+  const [roomSettingsSupported, setRoomSettingsSupported] = useState<boolean>(false);
   const [savedAudio] = useState<SavedAudio>(readSavedAudio);
   const [soundPreset, setSoundPreset] = useState<SoundPresetType>(savedAudio.preset);
   const [soundVolume, setSoundVolume] = useState<number>(savedAudio.sfxVolume);
@@ -249,7 +273,7 @@ export default function ShootingArenaApp() {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const engine = new ShootingArenaEngine(containerRef.current, readSavedTheme());
+    const engine = new ShootingArenaEngine(containerRef.current, readInitialSettings().theme);
     engineRef.current = engine;
 
     engine.onStatsUpdate = (newStats) => {
@@ -264,9 +288,13 @@ export default function ShootingArenaApp() {
       setIsPaused(paused);
     };
 
-    // 서버 경기는 시작한 쪽의 난이도로 모든 화면이 맞춰짐
-    engine.onDifficultySync = (diff) => {
-      setCurrentDifficulty(diff);
+    // 경기 설정이 바뀌면(방 설정 동기화·서버 경기 합류·이 기기 설정) 화면 표시를 맞추고,
+    // 테마는 다음에 열 때 처음부터 그 테마로 짓도록 저장
+    engine.onSettingsApplied = (settings) => {
+      setCurrentTheme(settings.theme);
+      setCurrentShape(settings.targetShape);
+      setCurrentDifficulty(settings.difficulty);
+      saveTheme(settings.theme);
     };
 
     engine.onGameStarted = () => {
@@ -310,6 +338,9 @@ export default function ShootingArenaApp() {
         p2Shots: v.p2Shots,
         aiSlot: aiSlotOf(v.mode, im.isP1Connected, im.isP2Connected, engine.clientRole),
         endedAt: Date.now(),
+        // 이 경기의 설정 (결과 화면·순위표 기록이 경기 뒤 다른 화면에서 바꾼 설정에 흔들리지 않게)
+        difficulty: engine.currentDifficulty,
+        theme: engine.currentTheme,
       };
       setLastResult(summary);
       setRecentMatches((prev) => {
@@ -354,6 +385,7 @@ export default function ShootingArenaApp() {
       setConnectionIssue(inputMgr.connectionIssue);
       setIsP1Connected(inputMgr.isP1Connected);
       setIsP2Connected(inputMgr.isP2Connected);
+      setRoomSettingsSupported(inputMgr.roomSettingsSupported);
       syncReady();
     };
 
@@ -376,6 +408,8 @@ export default function ShootingArenaApp() {
     // URL 쿼리 또는 저장된 역할에 따라 자동 역할 배정 및 소켓 연결
     const initRole = readInitialRole();
     engine.setRole(initRole);
+    // 화면을 다시 만들었으면(개발 모드 StrictMode·화면 재마운트로 연결은 그대로) 받아 둔 방의 경기 설정을 바로 적용
+    engine.applyCachedRoomSettings();
     inputMgr.connect(undefined, initRole);
 
     let demoTimer: ReturnType<typeof setTimeout> | undefined;
@@ -504,19 +538,21 @@ export default function ShootingArenaApp() {
     }
   }, []);
 
-  // ESC 키로 경기 즉시 중단, 열린 모달 닫기 또는 경기 전 준비 취소
+  // ESC: 열린 창(설정·순위표)을 먼저 닫고, 열린 창이 없을 때만 경기 중단 또는 경기 전 준비 취소.
+  // ESC를 누르고 있어 반복된 입력으로는 중단하지 않음 (창을 닫으려던 ESC가 이어져 경기가 끝나지 않게)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (isPlaying) {
-          handleAbortGame();
-        } else if (isSettingsOpen) {
-          setIsSettingsOpen(false);
-        } else if (isLeaderboardOpen) {
-          setIsLeaderboardOpen(false);
-        } else if (engineRef.current?.isLocalReady()) {
-          engineRef.current.cancelReady();
-        }
+      if (e.key !== 'Escape') return;
+      if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+      } else if (isLeaderboardOpen) {
+        setIsLeaderboardOpen(false);
+      } else if (e.repeat) {
+        return;
+      } else if (isPlaying) {
+        handleAbortGame();
+      } else if (engineRef.current?.isLocalReady()) {
+        engineRef.current.cancelReady();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -551,31 +587,19 @@ export default function ShootingArenaApp() {
     setIsMainMenuOpen(false);
   }, [handleSelectRole]);
 
-  const handleSelectTheme = useCallback((theme: ThemeType) => {
-    setCurrentTheme(theme);
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      // 저장하지 못해도 이번 접속에서는 적용됨
-    }
-    if (engineRef.current) {
-      engineRef.current.setTheme(theme);
-    }
+  /**
+   * 경기 설정 바꾸기. 서버가 방 설정을 지원하면 서버로만 보내고, 돌아오는 room_state로 모든 화면(이 화면 포함)이
+   * 같은 경로로 바뀜 (경기 중이면 서버가 바꾸지 않음). 서버에 연결되지 않았거나 옛 서버면 이 화면에만 적용
+   */
+  const changeSettings = useCallback((patch: Partial<RoomSettings>) => {
+    const im = InputManager.getInstance();
+    if (im.isConnectedToServer && im.roomSettingsSupported && im.sendRoomSettings(patch)) return;
+    engineRef.current?.applySettings(patch);
   }, []);
 
-  const handleSelectShape = useCallback((shape: TargetShape) => {
-    setCurrentShape(shape);
-    if (engineRef.current) {
-      engineRef.current.setTargetShape(shape);
-    }
-  }, []);
-
-  const handleSelectDifficulty = useCallback((diff: Difficulty) => {
-    setCurrentDifficulty(diff);
-    if (engineRef.current) {
-      engineRef.current.setDifficulty(diff);
-    }
-  }, []);
+  const handleSelectTheme = useCallback((theme: ThemeType) => changeSettings({ theme }), [changeSettings]);
+  const handleSelectShape = useCallback((targetShape: TargetShape) => changeSettings({ targetShape }), [changeSettings]);
+  const handleSelectDifficulty = useCallback((difficulty: Difficulty) => changeSettings({ difficulty }), [changeSettings]);
 
   // 소리 설정은 위의 효과가 소리 관리자에 반영하고 저장함
   const handleSelectSoundPreset = useCallback((preset: SoundPresetType) => {
@@ -664,6 +688,10 @@ export default function ShootingArenaApp() {
   // 관전 TV 소리 상태: 꺼 둠이 먼저, 그다음 브라우저가 막음(화면을 한 번 눌러야 함)
   const tvSound: TvSoundState = tvMuted ? 'muted' : audioStatus === 'allowed' ? 'on' : audioStatus;
 
+  // 경기 설정을 방 전체로 맞추는 중인지 (서버 연결 + 방 설정 지원), 실제 경기 중이라 바꿀 수 없는지
+  const roomSync = isWsConnected && roomSettingsSupported;
+  const roomLocked = roomSync && isPlaying && !isDemo;
+
   // 친구 대결 준비 띠: 경기 전에 나나 상대가 준비했을 때 (선수 화면만)
   const mySlot: 1 | 2 | null = clientRole === 'P1' ? 1 : clientRole === 'P2' ? 2 : null;
   const meReady = mySlot === 1 ? readyInfo.p1 : mySlot === 2 ? readyInfo.p2 : false;
@@ -745,6 +773,7 @@ export default function ShootingArenaApp() {
         currentShape={currentShape}
         currentDifficulty={currentDifficulty}
         onSelectDifficulty={handleSelectDifficulty}
+        roomSync={roomSync}
         highScore={highScore}
         clientRole={clientRole}
         versusMode={versusStats.mode}
@@ -764,6 +793,8 @@ export default function ShootingArenaApp() {
         onSelectTheme={handleSelectTheme}
         onSelectShape={handleSelectShape}
         onSelectDifficulty={handleSelectDifficulty}
+        roomSync={roomSync}
+        roomLocked={roomLocked}
         serverHost={serverHost}
         onUpdateServerHost={handleUpdateServerHost}
         sensitivity={sensitivity}

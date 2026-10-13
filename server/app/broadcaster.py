@@ -9,6 +9,13 @@ from starlette.websockets import WebSocketState
 logger = logging.getLogger("broadcaster")
 
 VALID_DIFFICULTIES = ("easy", "normal", "hard")
+# 경기 설정 중 경기장 테마와 표적 모양 (화면 코드 types/index.ts의 ThemeType·TargetShape와 같은 목록).
+# 테마·표적 모양·난이도는 방 전체가 같은 값을 씀 (서버를 다시 켜면 기본값으로 돌아감)
+VALID_THEMES = ("cyber", "space", "city")
+VALID_SHAPES = ("drone", "sphere", "cube", "disc")
+DEFAULT_THEME = "cyber"
+DEFAULT_SHAPE = "drone"
+DEFAULT_DIFFICULTY = "normal"
 DEFAULT_MATCH_DURATION = 60
 MIN_MATCH_DURATION = 10
 MAX_MATCH_DURATION = 600
@@ -76,7 +83,10 @@ class ConnectionManager:
         self.is_match_active = False
         self.is_match_paused = False
         self.match_duration = DEFAULT_MATCH_DURATION
-        self.difficulty = "normal"
+        # 경기 설정 (방 전체 공통): 어느 화면(1P·2P·관전)에서 바꿔도 모든 화면에 적용되고, 경기 중에는 바뀌지 않음
+        self.difficulty = DEFAULT_DIFFICULTY
+        self.theme = DEFAULT_THEME
+        self.target_shape = DEFAULT_SHAPE
         self.p1_score = 0
         self.p2_score = 0
         # 이번 경기에서 호스트가 생성했고 아직 격파되지 않은 표적 → 배점
@@ -172,7 +182,10 @@ class ConnectionManager:
             "isPaused": self.is_match_paused,
             "duration": self.match_duration,
             "remaining": round(self._remaining(), 2),
+            # 경기 설정 (클라이언트는 theme 값이 있으면 설정 변경을 서버로 보내 모든 화면을 맞춤)
             "difficulty": self.difficulty,
+            "theme": self.theme,
+            "targetShape": self.target_shape,
             "p1Score": self.p1_score,
             "p2Score": self.p2_score,
         }
@@ -275,7 +288,7 @@ class ConnectionManager:
         한 자리만 준비되면 READY_WAIT_SECONDS 뒤 자동 시작. ready가 false면 준비 취소"""
         slot = self._slot_of(websocket)
         if slot is None:
-            return # 관람 화면은 준비하지 않음 (관람 운영자의 [경기 시작]은 match_start로 바로 시작)
+            return # 관람 화면은 준비하지 않음 (경기는 선수가 준비해야만 시작)
         if data.get("ready") is False:
             if slot in self.ready_slots:
                 self._drop_ready(slot)
@@ -286,12 +299,10 @@ class ConnectionManager:
             await self._send(websocket, {"type": "match_started", **self._match_state()})
             return
         if not self.ready_slots:
-            # 처음 준비한 선수가 경기 시간과 난이도를 정함
+            # 처음 준비한 선수가 경기 시간을 정함. 난이도는 방의 경기 설정을 씀
+            # (예전 화면이 보내는 difficulty는 무시해, 다른 화면에서 고른 설정이 바뀌지 않게 함)
             duration = _to_int(data.get("duration")) or DEFAULT_MATCH_DURATION
             self._ready_duration = max(MIN_MATCH_DURATION, min(MAX_MATCH_DURATION, duration))
-            difficulty = data.get("difficulty")
-            if difficulty in VALID_DIFFICULTIES:
-                self.difficulty = difficulty
         self.ready_slots.add(slot)
         if set(self.player_clients) <= self.ready_slots:
             await self._start_match(self._ready_duration, None)
@@ -450,11 +461,8 @@ class ConnectionManager:
         elif msg_type == "match_abort":
             await self._handle_match_abort(data)
 
-        elif msg_type == "set_difficulty":
-            difficulty = data.get("difficulty")
-            if difficulty in VALID_DIFFICULTIES and not self.is_match_active:
-                self.difficulty = difficulty
-                await self.broadcast_room_state()
+        elif msg_type in ("set_room_settings", "set_difficulty"):
+            await self._handle_room_settings(websocket, data)
 
         elif msg_type == "request_role_change":
             await self._handle_role_change(websocket, data)
@@ -477,6 +485,9 @@ class ConnectionManager:
         self.target_points[target_id] = points
         data["points"] = points
         data["matchId"] = self.match_id
+        if data.get("shape") not in VALID_SHAPES:
+            # 모양이 없거나 잘못된 표적은 방의 표적 모양으로 (모양마다 명중 판정 도형이 달라 화면마다 같아야 함)
+            data["shape"] = self.target_shape
         await self.relay_to_others(websocket, data)
 
     async def _handle_hit_request(self, websocket: WebSocket, data: dict):
@@ -511,6 +522,10 @@ class ConnectionManager:
         })
 
     async def _handle_match_start(self, websocket: WebSocket, data: dict):
+        if self._slot_of(websocket) is None:
+            # 경기는 선수만 시작함 (관람 화면은 보기·일시정지·중단만).
+            # 관람 화면은 client_assigned·room_state로 진행 중인 경기를 이미 따라가므로 합류 응답도 보내지 않음
+            return
         if self.is_match_active:
             # 이미 진행 중이면 새로 시작하지 않고, 요청한 클라이언트만 현재 경기에 합류시킴
             await self._send(websocket, {"type": "match_started", **self._match_state()})
@@ -536,9 +551,38 @@ class ConnectionManager:
         self.p2_score = 0
         self.target_points.clear()
         self._start_match_timer()
-        logger.info(f"Match {self.match_id} started ({duration}s, difficulty={self.difficulty})")
+        logger.info(
+            f"Match {self.match_id} started ({duration}s, difficulty={self.difficulty}, "
+            f"theme={self.theme}, shape={self.target_shape})"
+        )
         await self.broadcast_to_all({"type": "match_started", **self._match_state()})
         await self.broadcast_room_state()
+
+    async def _handle_room_settings(self, websocket: WebSocket, data: dict):
+        """경기 설정(테마·표적 모양·난이도) 변경. 선수·관람 화면 어디서 바꿔도 방 전체에 적용.
+        경기 중에는 바꾸지 않음 (진행 중인 경기의 배경·표적이 화면마다 달라지지 않게).
+        바뀐 값이 있으면 모든 화면에 room_state를 방송하고, 거부했거나 바뀐 값이 없으면
+        요청한 화면에만 현재 값을 보내 그 화면의 선택 표시를 실제 값으로 되돌림.
+        예전 화면이 보내는 set_difficulty도 같은 방식으로 처리함"""
+        changed = False
+        if not self.is_match_active:
+            theme = data.get("theme")
+            if theme in VALID_THEMES and theme != self.theme:
+                self.theme = theme
+                changed = True
+            shape = data.get("targetShape")
+            if shape in VALID_SHAPES and shape != self.target_shape:
+                self.target_shape = shape
+                changed = True
+            difficulty = data.get("difficulty")
+            if difficulty in VALID_DIFFICULTIES and difficulty != self.difficulty:
+                self.difficulty = difficulty
+                changed = True
+        if changed:
+            logger.info(f"Room settings: theme={self.theme}, shape={self.target_shape}, difficulty={self.difficulty}")
+            await self.broadcast_room_state()
+        else:
+            await self._send(websocket, {"type": "room_state", **self._room_info(), **self._match_state()})
 
     async def _handle_match_pause(self, data: dict):
         if not self._is_current_match(data) or self.is_match_paused:

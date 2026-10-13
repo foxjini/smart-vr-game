@@ -103,6 +103,16 @@ export interface TargetSpawnPacket {
   matchId?: number;
 }
 
+/**
+ * 경기 설정. 방 전체(1P·2P·관전)가 같은 값을 씀: 서버가 기억하고, 어느 화면에서 바꿔도 모든 화면에 적용됨.
+ * 경기 중에는 바뀌지 않음 (서버가 예전 것이면 기기마다 따로 적용)
+ */
+export interface RoomSettings {
+  theme: ThemeType;
+  targetShape: TargetShape;
+  difficulty: Difficulty;
+}
+
 /** 서버가 알려주는 경기 상태 (match_started / client_assigned / room_state) */
 export interface MatchInfo {
   matchId: number;
@@ -111,6 +121,9 @@ export interface MatchInfo {
   duration: number;
   remaining: number;
   difficulty?: Difficulty;
+  /** 경기장 테마·표적 모양 (방 설정을 지원하는 서버만 보냄) */
+  theme?: ThemeType;
+  targetShape?: TargetShape;
   p1Score: number;
   p2Score: number;
 }

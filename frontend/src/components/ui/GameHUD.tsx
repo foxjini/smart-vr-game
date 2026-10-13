@@ -18,6 +18,7 @@ interface GameHUDProps {
   connectionIssue?: ConnectionIssue | null;
   isPlaying: boolean;
   isPaused?: boolean;
+  /** 선수 화면의 [경기 시작] (관전 화면은 경기를 시작하지 않음) */
   onStartGame: () => void;
   onPauseGame: () => void;
   onAbortGame?: () => void;
@@ -98,7 +99,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         readyInfo={readyInfo}
         tvSound={tvSound}
         onToggleTvSound={onToggleTvSound}
-        onStartGame={onStartGame}
         onPauseGame={onPauseGame}
         onAbortGame={onAbortGame}
         onOpenSettings={onOpenSettings}

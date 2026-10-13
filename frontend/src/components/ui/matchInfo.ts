@@ -1,5 +1,5 @@
 import { AI_NAME, ROLE_NAME } from '@/constants/labels';
-import { ClientRole } from '@/types';
+import { ClientRole, Difficulty, ThemeType } from '@/types';
 
 export type Slot = 1 | 2;
 export type Winner = 'P1' | 'P2' | 'DRAW';
@@ -20,6 +20,9 @@ export interface MatchResultSummary {
   p2Shots?: number;
   aiSlot: Slot | null;
   endedAt: number;
+  /** 이 경기의 난이도·경기장 테마 (이 항목이 없는 예전 기록은 지금 설정으로 표시) */
+  difficulty?: Difficulty;
+  theme?: ThemeType;
 }
 
 /** 경기 전 준비 상태 (서버 room_state의 p1Ready·p2Ready·readyRemaining) */

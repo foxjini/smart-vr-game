@@ -12,10 +12,10 @@ interface OperatorControlsProps {
   /** 진행 중인 실제 경기가 있음 (관전 데모는 제외) */
   matchRunning: boolean;
   isPaused: boolean;
-  /** 경기 시작 버튼 표시 */
-  canStart: boolean;
+  /** 경기 시작 버튼 표시 (선수 화면만. 관전 화면은 경기를 시작하지 않아 넘기지 않음) */
+  canStart?: boolean;
   isVRSupported: boolean;
-  onStartGame: () => void;
+  onStartGame?: () => void;
   onPauseGame: () => void;
   onAbortGame?: () => void;
   onOpenSettings: () => void;
@@ -34,7 +34,7 @@ export function OperatorControls({
   mode,
   matchRunning,
   isPaused,
-  canStart,
+  canStart = false,
   isVRSupported,
   onStartGame,
   onPauseGame,
@@ -180,14 +180,16 @@ export function OperatorControls({
     );
   }
 
+  const showStart = canStart && onStartGame !== undefined;
+  const showEnterVR = mode === 'player' && onEnterVR !== undefined;
   return (
     <div className={cx('hud-interactive flex items-center gap-2', className)}>
-      {canStart && (
+      {showStart && (
         <Button id="btn-start" icon={Play} size="sm" variant="primary" onClick={onStartGame}>
           경기 시작
         </Button>
       )}
-      {mode === 'player' && onEnterVR && (
+      {showEnterVR && (
         <Button
           id="btn-enter-vr"
           icon={Headset}
@@ -201,7 +203,7 @@ export function OperatorControls({
           VR 시작
         </Button>
       )}
-      <span className="mx-0.5 h-6 w-px bg-line-strong" aria-hidden="true" />
+      {(showStart || showEnterVR) && <span className="mx-0.5 h-6 w-px bg-line-strong" aria-hidden="true" />}
       {soundButton}
       {leaderboard}
       {settings}

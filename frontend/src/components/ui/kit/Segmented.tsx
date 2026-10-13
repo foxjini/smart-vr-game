@@ -18,17 +18,20 @@ interface SegmentedProps<T extends string> {
   onChange: (value: T) => void;
   /** 세로 목록으로 배치 (설명이 긴 항목) */
   vertical?: boolean;
+  /** 지금은 고를 수 없음 (흐리게 보이고 눌러도 바뀌지 않음) */
+  disabled?: boolean;
   className?: string;
 }
 
 /** 여러 값 중 하나를 고르는 묶음 버튼 (라디오 그룹) */
-export function Segmented<T extends string>({ label, value, options, onChange, vertical, className }: SegmentedProps<T>) {
+export function Segmented<T extends string>({ label, value, options, onChange, vertical, disabled = false, className }: SegmentedProps<T>) {
   const move = (dir: number) => {
     const i = options.findIndex((o) => o.value === value);
     const next = options[(i + dir + options.length) % options.length];
     if (next) onChange(next.value);
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (disabled) return;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault();
       move(1);
@@ -42,8 +45,9 @@ export function Segmented<T extends string>({ label, value, options, onChange, v
     <div
       role="radiogroup"
       aria-label={label}
+      aria-disabled={disabled || undefined}
       onKeyDown={onKeyDown}
-      className={cx('hud-interactive grid gap-1 rounded-xl border border-line bg-ink/55 p-1', className)}
+      className={cx('hud-interactive grid gap-1 rounded-xl border border-line bg-ink/55 p-1', disabled && 'opacity-50', className)}
       style={vertical ? undefined : { gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       {options.map((o) => {
@@ -54,14 +58,16 @@ export function Segmented<T extends string>({ label, value, options, onChange, v
             type="button"
             role="radio"
             aria-checked={selected}
+            disabled={disabled}
             tabIndex={selected ? 0 : -1}
             onClick={(e) => {
               onChange(o.value);
               if (e.detail > 0) e.currentTarget.blur();
             }}
             className={cx(
-              'relative flex min-h-11 min-w-0 cursor-pointer flex-col justify-center rounded-lg px-3 py-2 text-left transition-colors duration-150',
-              selected ? 'bg-raised text-fg ring-1 ring-p1/70' : 'text-fg-2 hover:bg-white/6 hover:text-fg'
+              'relative flex min-h-11 min-w-0 flex-col justify-center rounded-lg px-3 py-2 text-left transition-colors duration-150',
+              disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+              selected ? 'bg-raised text-fg ring-1 ring-p1/70' : cx('text-fg-2', !disabled && 'hover:bg-white/6 hover:text-fg')
             )}
           >
             <span className="flex items-center gap-1.5 text-[14px] font-semibold leading-tight">

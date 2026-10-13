@@ -53,6 +53,22 @@ export const SHAPE_NAME: Record<TargetShape, string> = {
   disc: '디스크',
 };
 
+/** 경기 설정을 고르는 순서 (설정 창·메뉴). 서버 server/app/broadcaster.py의 VALID_* 목록과 같은 값 */
+export const DIFFICULTY_ORDER: Difficulty[] = ['easy', 'normal', 'hard'];
+export const THEME_ORDER: ThemeType[] = ['cyber', 'space', 'city'];
+export const SHAPE_ORDER: TargetShape[] = ['drone', 'sphere', 'cube', 'disc'];
+
+/** 서버·저장소에서 받은 값이 올바른 경기 설정 값인지 */
+export function isDifficulty(value: unknown): value is Difficulty {
+  return (DIFFICULTY_ORDER as readonly unknown[]).includes(value);
+}
+export function isTheme(value: unknown): value is ThemeType {
+  return (THEME_ORDER as readonly unknown[]).includes(value);
+}
+export function isTargetShape(value: unknown): value is TargetShape {
+  return (SHAPE_ORDER as readonly unknown[]).includes(value);
+}
+
 /** 관전 카메라 이름 (숫자 키 1~4 순서) */
 export const CAMERA_ORDER: SpectatorCameraMode[] = ['STADIUM', 'P1_VIEW', 'P2_VIEW', 'ORBIT'];
 export const CAMERA_NAME: Record<SpectatorCameraMode, string> = {

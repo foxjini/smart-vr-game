@@ -13,6 +13,7 @@ import {
   TargetSpawnPacket,
   TargetKeyword,
   MatchInfo,
+  RoomSettings,
 } from '@/types';
 import { SoundManager } from '@/core/audio/SoundManager';
 import { VoiceManager } from '@/core/audio/VoiceManager';
@@ -41,7 +42,7 @@ import { VR_TEXT, vrFormat } from './visual/text/vrStrings';
 import { HoloScoreboard } from './visual/HoloScoreboard';
 import { LobbyPlayer, ResultPanel, ResultPlayer } from './visual/ResultPanel';
 import { aiSlotOf, formatClock, normalizeWinner, slotName, winnerHeadline } from '@/components/ui/matchInfo';
-import { KEYWORDS_1PT, KEYWORDS_2PT, KEYWORDS_MINUS, keywordPoints } from '@/constants/labels';
+import { KEYWORDS_1PT, KEYWORDS_2PT, KEYWORDS_MINUS, isTargetShape, keywordPoints } from '@/constants/labels';
 
 /** 표적 문구 8가지 (배점은 constants/labels의 keywordPoints: 2점·1점, 기계·전기는 -1점) */
 export const TARGET_KEYWORDS: TargetKeyword[] = [...KEYWORDS_2PT, ...KEYWORDS_1PT, ...KEYWORDS_MINUS];
@@ -230,8 +231,8 @@ export class ShootingArenaEngine {
   public onGameOver?: (finalStats: GameStats, result: MatchEndResult) => void;
   public onGameStarted?: () => void;
   public onPauseChange?: (paused: boolean) => void;
-  /** 서버 경기의 난이도가 로컬 설정과 달라 동기화했을 때 */
-  public onDifficultySync?: (difficulty: Difficulty) => void;
+  /** 경기 설정(테마·표적 모양·난이도)이 실제로 바뀌었을 때 전체 값 (방 설정 동기화·서버 경기 합류·이 기기 설정) */
+  public onSettingsApplied?: (settings: RoomSettings) => void;
 
   // 서버 경기 상태 (null = 오프라인·관람 데모·서버 무응답 대체 등 로컬 경기)
   private matchId: number | null = null;
@@ -448,11 +449,14 @@ export class ShootingArenaEngine {
   };
 
   private onXRSessionEnd = () => {
-    if (this.isPlaying) {
-      this.abortGame('플레이어 VR 세션 종료');
-    } else {
-      // 경기 전 대기 중에 VR을 나가면 준비 취소
-      this.cancelReady();
+    // 관전 화면(관전 주소를 연 헤드셋)은 VR을 나가도 경기를 중단하지 않음
+    if (this.clientRole !== 'SPECTATOR') {
+      if (this.isPlaying) {
+        this.abortGame('플레이어 VR 세션 종료');
+      } else {
+        // 경기 전 대기 중에 VR을 나가면 준비 취소
+        this.cancelReady();
+      }
     }
     this.showVRPanel('hidden');
   };
@@ -508,6 +512,11 @@ export class ShootingArenaEngine {
 
     this.inputManager.onRoomStateChange = () => {
       this.notifyVersusStats();
+    };
+
+    // 방의 경기 설정 (어느 화면에서 바꿔도 모든 화면에 옴). 서버 경기 중에는 서버가 바꾸지 않음
+    this.inputManager.onRoomSettingsChange = (settings) => {
+      this.applyRoomSettings(settings);
     };
 
     this.inputManager.onRemotePose = (pose: PlayerPose) => {
@@ -1076,6 +1085,8 @@ export class ShootingArenaEngine {
   // 2. 가상 공간 테마 빌드
   // ==========================================
   public setTheme(theme: ThemeType) {
+    // 같은 테마면 다시 짓지 않음 (방 설정을 받을 때마다 부르므로)
+    if (theme === this.currentTheme) return;
     this.currentTheme = theme;
     this.arena.setTheme(theme);
     // 조명 구성과 안개 종류는 테마마다 같아 표적·효과 셰이더는 그대로지만, 혹시 바뀐 것이 있으면 미리 컴파일
@@ -1086,13 +1097,59 @@ export class ShootingArenaEngine {
   // 3. 3D 표적 메쉬 생성
   // ==========================================
   public setTargetShape(shape: TargetShape) {
+    if (shape === this.currentShape) return;
     this.currentShape = shape;
-    this.clearAllTargets();
+    if (this.isPlaying) {
+      // 시연·로컬 경기 중이면 남은 표적은 사라지게 하고 다음 표적부터 새 모양으로 나옴
+      for (const t of this.activeTargets) {
+        if (!t.isHit && t.despawn < 0) this.beginDespawn(t);
+      }
+    } else {
+      this.clearAllTargets();
+    }
   }
 
   public setDifficulty(diff: Difficulty) {
     this.currentDifficulty = diff;
     this.cyberAI.setDifficulty(diff);
+  }
+
+  /** 지금 이 화면의 경기 설정 */
+  public getSettings(): RoomSettings {
+    return { theme: this.currentTheme, targetShape: this.currentShape, difficulty: this.currentDifficulty };
+  }
+
+  /** 경기 설정을 이 화면에 적용 (바뀐 항목만). 바뀐 것이 있으면 onSettingsApplied로 전체 값을 알림 */
+  public applySettings(patch: Partial<RoomSettings>) {
+    if (this.disposed) return;
+    let changed = false;
+    if (patch.theme && patch.theme !== this.currentTheme) {
+      this.setTheme(patch.theme);
+      changed = true;
+    }
+    if (patch.targetShape && patch.targetShape !== this.currentShape) {
+      this.setTargetShape(patch.targetShape);
+      changed = true;
+    }
+    if (patch.difficulty && patch.difficulty !== this.currentDifficulty) {
+      this.setDifficulty(patch.difficulty);
+      changed = true;
+    }
+    if (changed && this.onSettingsApplied) this.onSettingsApplied(this.getSettings());
+  }
+
+  /** 서버가 알려 준 방의 경기 설정 적용. 서버 경기 중에는 그대로 두고 경기가 끝나면 적용 (stopGameLocal) */
+  private applyRoomSettings(settings: RoomSettings) {
+    if (this.isPlaying && this.matchId !== null) return;
+    this.applySettings(settings);
+  }
+
+  /** 받아 둔 방의 경기 설정을 다시 적용 (서버 경기가 끝났을 때, 엔진을 다시 만들었을 때) */
+  public applyCachedRoomSettings() {
+    const im = this.inputManager;
+    if (im.isConnectedToServer && im.roomSettingsSupported && im.roomSettings) {
+      this.applyRoomSettings(im.roomSettings);
+    }
   }
 
   /** 웹 폰트를 불러온 뒤 캔버스 글자(표적 라벨·점수 팝업·OLED·결과판)를 다시 그림 */
@@ -1203,7 +1260,8 @@ export class ShootingArenaEngine {
 
     this.addTarget({
       id: data.id,
-      shape: data.shape || this.currentShape,
+      // 모양이 없거나 모르는 값이면 이 화면의 모양 (모르는 모양은 겉모습·라벨 위치를 만들 수 없음)
+      shape: isTargetShape(data.shape) ? data.shape : this.currentShape,
       keyword,
       points,
       basePos: new THREE.Vector3(...data.basePos),
@@ -1564,21 +1622,12 @@ export class ShootingArenaEngine {
     return im.isConnectedToServer && im.readySupported && im.isP1Connected && im.isP2Connected;
   }
 
-  /** 서버 경기로 진행할지: 서버에 연결돼 있고, 플레이어이거나 (관람 운영자는) 접속한 플레이어가 있을 때 */
-  private shouldUseServerMatch(): boolean {
-    const im = this.inputManager;
-    if (!im.isConnectedToServer) return false;
-    if (this.clientRole !== 'SPECTATOR') return true;
-    return im.isP1Connected || im.isP2Connected;
-  }
-
   /** 경기 시작 요청 (방아쇠, 시작 버튼, VR 진입). 서버 경기면 서버의 시작 신호에 맞춰 모두 함께 시작 */
   public startGame() {
     if (this.disposed) return;
-    // 관전 화면 운영자가 시연 중에 경기를 시작하면 시연을 조용히 끝내고 실제 경기를 요청
-    if (this.isPlaying && this.demoActive && this.shouldUseServerMatch()) {
-      this.stopDemo();
-    }
+    // 관전 화면은 경기를 시작하지 않음 (경기는 선수가 준비해야 시작. 관전은 보기·일시정지·중단만).
+    // 관전 주소를 연 헤드셋이 VR에 들어가도 시작하지 않음
+    if (this.clientRole === 'SPECTATOR') return;
     if (this.isPlaying || this.pendingStartTimer) return;
     // 내 역할 자리를 다른 기기가 쓰는 중이면 혼자만 보이는 로컬 경기를 시작하지 않음
     if (this.inputManager.connectionIssue) return;
@@ -1587,10 +1636,11 @@ export class ShootingArenaEngine {
     // 서버가 준비를 지원하지 않으면(옛 서버) 아래의 예전 방식으로 바로 시작 요청
     const im = this.inputManager;
     if (this.localSlot !== null && im.isConnectedToServer && im.readySupported) {
-      if (!this.isLocalReady()) im.sendPlayerReady(true, MATCH_DURATION, this.currentDifficulty);
+      // 방 설정을 지원하는 서버는 방의 난이도로 시작하므로 이 화면의 난이도는 싣지 않음
+      if (!this.isLocalReady()) im.sendPlayerReady(true, MATCH_DURATION, im.roomSettingsSupported ? undefined : this.currentDifficulty);
       return;
     }
-    if (this.shouldUseServerMatch() && this.inputManager.sendMatchStart(MATCH_DURATION, this.currentDifficulty)) {
+    if (im.isConnectedToServer && im.sendMatchStart(MATCH_DURATION, this.currentDifficulty)) {
       // 서버 응답이 없으면 로컬 경기로 대체
       this.pendingStartTimer = setTimeout(() => {
         this.pendingStartTimer = null;
@@ -1629,7 +1679,7 @@ export class ShootingArenaEngine {
     this.voiceManager.setSuppressed(active);
   }
 
-  /** 경기 시작 (info가 있으면 서버 경기의 남은 시간·난이도·점수에 맞춰 합류) */
+  /** 경기 시작 (info가 있으면 서버 경기의 남은 시간·경기 설정·점수에 맞춰 합류) */
   private startGameLocal(info: MatchInfo | null, demo: boolean = false) {
     if (this.pendingStartTimer) {
       clearTimeout(this.pendingStartTimer);
@@ -1637,9 +1687,9 @@ export class ShootingArenaEngine {
     }
     this.setDemoActive(demo && info === null);
     this.matchId = info ? info.matchId : null;
-    if (info?.difficulty && info.difficulty !== this.currentDifficulty) {
-      this.setDifficulty(info.difficulty);
-      if (this.onDifficultySync) this.onDifficultySync(info.difficulty);
+    if (info) {
+      // 서버 경기는 서버의 경기 설정으로 모든 화면이 같게 (테마·표적 모양은 방 설정을 지원하는 서버만 보냄)
+      this.applySettings({ theme: info.theme, targetShape: info.targetShape, difficulty: info.difficulty });
     }
 
     this.isPlaying = true;
@@ -1790,6 +1840,8 @@ export class ShootingArenaEngine {
       const myFinalStats = this.clientRole === 'P2' ? this.p2Stats : this.stats;
       this.onGameOver({ ...myFinalStats }, { winner, aborted, demo: wasDemo, versus: this.buildVersusStats() });
     }
+    // 서버 경기 중에 미뤄 둔 경기 설정 변경을 이제 적용 (결과를 화면에 넘긴 뒤. 경기가 끝나는 순간 다른 화면에서 바꾼 경우 등)
+    if (this.matchId !== null) this.applyCachedRoomSettings();
   }
 
   /** 표적이 0.4초 동안 작아지며 사라지기 시작 (맞힌 것으로 치지 않음, 사격 판정에서도 빠짐) */
@@ -2314,6 +2366,7 @@ export class ShootingArenaEngine {
     im.onReloadCallback = undefined;
     im.onClientAssigned = undefined;
     im.onRoomStateChange = undefined;
+    im.onRoomSettingsChange = undefined;
     im.onRemotePose = undefined;
     im.onRemoteFire = undefined;
     im.onRemoteTargetSpawn = undefined;
@@ -2331,7 +2384,7 @@ export class ShootingArenaEngine {
     this.onGameOver = undefined;
     this.onGameStarted = undefined;
     this.onPauseChange = undefined;
-    this.onDifficultySync = undefined;
+    this.onSettingsApplied = undefined;
   }
 }
 
