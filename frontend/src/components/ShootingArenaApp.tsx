@@ -11,7 +11,8 @@ import { GameOverModal } from '@/components/ui/GameOverModal';
 import { MainMenuModal } from '@/components/ui/MainMenuModal';
 import { LeaderboardModal } from '@/components/ui/LeaderboardModal';
 import { AimReticle } from '@/components/ui/hud/AimReticle';
-import { MatchResultSummary, aiSlotOf, normalizeWinner } from '@/components/ui/matchInfo';
+import { ReadyBanner } from '@/components/ui/hud/ReadyBanner';
+import { MatchResultSummary, NO_READY, ReadyInfo, aiSlotOf, normalizeWinner } from '@/components/ui/matchInfo';
 import {
   ThemeType,
   TargetShape,
@@ -120,6 +121,8 @@ export default function ShootingArenaApp() {
   const [serverHost, setServerHost] = useState<string>(() => window.location.hostname || 'localhost');
   const [isP1Connected, setIsP1Connected] = useState<boolean>(false);
   const [isP2Connected, setIsP2Connected] = useState<boolean>(false);
+  /** 경기 전 준비 상태 (친구 대결은 두 선수가 모두 준비되면 시작, 한 명만 준비하면 잠시 뒤 자동 시작) */
+  const [readyInfo, setReadyInfo] = useState<ReadyInfo>(NO_READY);
   const [sensitivity, setSensitivity] = useState<number>(1.0);
   const [isVRSupported, setIsVRSupported] = useState<boolean>(false);
 
@@ -225,6 +228,8 @@ export default function ShootingArenaApp() {
     };
 
     engine.onGameStarted = () => {
+      // 경기가 시작되면 준비는 끝남 (InputManager도 match_started에서 지움)
+      setReadyInfo((prev) => (prev.p1 || prev.p2 || prev.deadlineAt ? { ...prev, p1: false, p2: false, deadlineAt: 0 } : prev));
       setIsPlaying(true);
       setIsDemo(engine.isDemoRunning);
       setIsMainMenuOpen(false);
@@ -290,12 +295,24 @@ export default function ShootingArenaApp() {
     };
 
     const inputMgr = InputManager.getInstance();
+    const syncReady = () => {
+      const next: ReadyInfo = {
+        supported: inputMgr.readySupported,
+        p1: inputMgr.p1Ready,
+        p2: inputMgr.p2Ready,
+        deadlineAt: inputMgr.readyDeadlineAt,
+      };
+      setReadyInfo((prev) =>
+        prev.supported === next.supported && prev.p1 === next.p1 && prev.p2 === next.p2 && prev.deadlineAt === next.deadlineAt ? prev : next
+      );
+    };
     inputMgr.onStatusChange = (status, wsConnected) => {
       setSystemStatus(status);
       setIsWsConnected(wsConnected);
       setConnectionIssue(inputMgr.connectionIssue);
       setIsP1Connected(inputMgr.isP1Connected);
       setIsP2Connected(inputMgr.isP2Connected);
+      syncReady();
     };
 
     // 엔진이 등록한 핸들러(역할별 배치 등)를 유지한 채 화면 상태만 추가로 갱신
@@ -408,7 +425,7 @@ export default function ShootingArenaApp() {
     }
   }, []);
 
-  // ESC 키로 경기 즉시 중단 또는 열린 모달 닫기
+  // ESC 키로 경기 즉시 중단, 열린 모달 닫기 또는 경기 전 준비 취소
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -418,6 +435,8 @@ export default function ShootingArenaApp() {
           setIsSettingsOpen(false);
         } else if (isLeaderboardOpen) {
           setIsLeaderboardOpen(false);
+        } else if (engineRef.current?.isLocalReady()) {
+          engineRef.current.cancelReady();
         }
       }
     };
@@ -522,20 +541,29 @@ export default function ShootingArenaApp() {
     InputManager.getInstance().sensitivity = val;
   }, []);
 
-  // Quest 2 WebXR 세션 진입
+  // Quest 2 WebXR 세션 진입.
+  // VR에 실제로 들어간 순간(sessionstart) 엔진이 경기를 시작(친구 대결은 '준비 완료')하므로 여기서는 메뉴만 닫음.
+  // 권한 창을 기다리는 사이 상대가 준비해 경기가 먼저 시작되지 않게, 준비는 VR에 들어간 뒤에 보냄.
+  // VR을 지원하지 않는 기기(PC 브라우저)는 예전처럼 PC 경기로 시작
   const handleEnterVR = useCallback(async () => {
     if (!engineRef.current) return;
     const renderer = engineRef.current.getRenderer();
 
-    if (renderer.xr.isPresenting || renderer.xr.getSession()) {
+    if (!isVRSupported || renderer.xr.isPresenting || renderer.xr.getSession()) {
       handleStartGame();
       return;
     }
 
+    const closeMenus = () => {
+      setIsMainMenuOpen(false);
+      setIsGameOverOpen(false);
+      setIsLeaderboardOpen(false);
+    };
+
     const threeVRBtn = document.getElementById('three-vr-button');
     if (threeVRBtn) {
+      closeMenus();
       threeVRBtn.click();
-      handleStartGame();
       return;
     }
 
@@ -551,8 +579,8 @@ export default function ShootingArenaApp() {
           await session.end();
           return;
         }
+        closeMenus();
         await liveRenderer.xr.setSession(session);
-        handleStartGame();
       } catch (err) {
         console.error('Failed to enter WebXR:', err);
         handleStartGame();
@@ -560,10 +588,36 @@ export default function ShootingArenaApp() {
     } else {
       handleStartGame();
     }
-  }, [handleStartGame]);
+  }, [handleStartGame, isVRSupported]);
+
+  const handleCancelReady = useCallback(() => {
+    engineRef.current?.cancelReady();
+  }, []);
 
   // 플레이어가 PC로 경기 중이면 마우스 화살표 대신 실제 조준점(AimReticle)만 보이게 함
   const isAiming = isPlaying && clientRole !== 'SPECTATOR';
+
+  // 친구 대결 준비 띠: 경기 전에 나나 상대가 준비했을 때 (선수 화면만)
+  const mySlot: 1 | 2 | null = clientRole === 'P1' ? 1 : clientRole === 'P2' ? 2 : null;
+  const meReady = mySlot === 1 ? readyInfo.p1 : mySlot === 2 ? readyInfo.p2 : false;
+  const rivalReady = mySlot === 1 ? readyInfo.p2 : mySlot === 2 ? readyInfo.p1 : false;
+  const showReadyBanner =
+    mySlot !== null && !isPlaying && isWsConnected && readyInfo.supported && isP1Connected && isP2Connected && (meReady || rivalReady);
+  // 메뉴·결과 창이 열려 있으면 창 안쪽 맨 위에 넣어 창 머리글을 가리지 않게 함
+  const readyBanner = (inline: boolean) =>
+    mySlot !== null ? (
+      <ReadyBanner
+        inline={inline}
+        mySlot={mySlot}
+        meReady={meReady}
+        rivalReady={rivalReady}
+        deadlineAt={readyInfo.deadlineAt}
+        isVRSupported={isVRSupported}
+        onEnterVR={handleEnterVR}
+        onStartPC={handleStartGame}
+        onCancel={handleCancelReady}
+      />
+    ) : null;
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-black select-none">
@@ -597,8 +651,13 @@ export default function ShootingArenaApp() {
           spectatorResult={spectatorResult}
           spectatorResultUntil={spectatorResultUntil}
           recentMatches={recentMatches}
+          readyInfo={readyInfo}
+          hideStartHint={showReadyBanner}
         />
       )}
+
+      {/* 2.4 친구 대결 준비 띠 (메뉴·결과 창이 없을 때는 화면 위쪽 가운데에 띄움) */}
+      {showReadyBanner && !isMainMenuOpen && !isGameOverOpen && readyBanner(false)}
 
       {/* 2.5 PC 조준점 (실제로 겨누는 곳을 따라감) */}
       {isAiming && (
@@ -623,6 +682,7 @@ export default function ShootingArenaApp() {
         isP1Connected={isP1Connected}
         isP2Connected={isP2Connected}
         connectionIssue={connectionIssue}
+        notice={showReadyBanner ? readyBanner(true) : undefined}
       />
 
       {/* 4. 사격장 설정 모달 */}
@@ -661,6 +721,7 @@ export default function ShootingArenaApp() {
           difficulty={currentDifficulty}
           theme={currentTheme}
           onRestart={handleStartGame}
+          notice={showReadyBanner ? readyBanner(true) : undefined}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onViewLeaderboard={(id) => handleOpenLeaderboard(id)}
           onGoToMainMenu={() => {

@@ -20,6 +20,10 @@ MAX_TRACKED_TARGETS = 500
 # 경기 중 남은 시간을 모든 화면에 다시 알리는 간격(초).
 # 막 접속한 기기가 첫 화면을 그리느라 메시지를 늦게 처리해도 이 간격 안에 시계가 맞춰짐
 CLOCK_SYNC_INTERVAL = 5.0
+# 친구 대결에서 한 선수만 '준비 완료'일 때 경기를 자동으로 시작하기까지 기다리는 시간(초).
+# 상대 헤드셋은 그 기기에서 직접 버튼을 눌러야 VR에 들어갈 수 있으므로(WebXR 보안 규칙) 그동안 기다려 줌.
+# 상대가 끝내 준비하지 않아도 이 시간이 지나면 시작하고, 상대는 VR에 들어오는 대로 합류함
+READY_WAIT_SECONDS = 15.0
 # 같은 기기(같은 세션)가 다시 접속해 이전 연결을 대체할 때 이전 소켓에 보내는 종료 코드.
 # 클라이언트는 이 코드를 받으면 자동 재접속하지 않음
 CLOSE_CODE_REPLACED = 4001
@@ -82,6 +86,13 @@ class ConnectionManager:
         self._match_task: Optional[asyncio.Task] = None
         self._background_tasks: Set[asyncio.Task] = set()
 
+        # 경기 전 '준비 완료'한 플레이어 자리 (소켓이 바뀌거나 끊기면 취소됨).
+        # 접속한 자리가 모두 준비되면 바로 시작하고, 한 자리만 준비되면 READY_WAIT_SECONDS 뒤 자동 시작
+        self.ready_slots: Set[int] = set()
+        self._ready_deadline: Optional[float] = None # 이벤트 루프 시각 기준 자동 시작 시각
+        self._ready_task: Optional[asyncio.Task] = None
+        self._ready_duration = DEFAULT_MATCH_DURATION # 처음 준비한 선수가 정한 경기 시간
+
         self.last_pico_packet = None
         self.last_source = None
 
@@ -134,14 +145,24 @@ class ConnectionManager:
             return self._paused_remaining
         return max(0.0, self._match_deadline - self._now())
 
+    def _ready_remaining(self) -> Optional[float]:
+        if self._ready_deadline is None:
+            return None
+        return max(0.0, self._ready_deadline - self._now())
+
     def _room_info(self) -> dict:
         p1 = 1 in self.player_clients
         p2 = 2 in self.player_clients
+        ready_remaining = self._ready_remaining()
         return {
             "p1Connected": p1,
             "p2Connected": p2,
             "spectatorCount": len(self.spectator_clients),
             "mode": "VERSUS_PVP" if (p1 and p2) else "VERSUS_AI",
+            # 경기 전 준비 상태 (클라이언트는 이 값이 있으면 시작 요청을 '준비 완료'로 보냄)
+            "p1Ready": 1 in self.ready_slots,
+            "p2Ready": 2 in self.ready_slots,
+            "readyRemaining": None if ready_remaining is None else round(ready_remaining, 2),
         }
 
     def _match_state(self) -> dict:
@@ -172,6 +193,7 @@ class ConnectionManager:
         pid = self._slot_of(websocket)
         if pid is not None:
             del self.player_clients[pid]
+            self._drop_ready(pid)
             old_sid = self.player_sessions.pop(pid, None)
             if old_sid:
                 self.session_to_player.pop(old_sid, None)
@@ -206,7 +228,8 @@ class ConnectionManager:
             self.session_to_player[session_id] = player_id
 
         if old_ws is not None and old_ws is not websocket:
-            # 같은 기기가 새 연결로 돌아옴: 끊긴 채 남아 있던 이전 소켓 정리
+            # 같은 기기가 새 연결로 돌아옴: 끊긴 채 남아 있던 이전 소켓 정리 (이전 연결의 준비는 취소)
+            self._drop_ready(player_id)
             self.game_clients.discard(old_ws)
             self.spectator_clients.discard(old_ws)
             logger.info(f"Player {player_id} reconnected with a new socket (Session: {session_id})")
@@ -215,6 +238,69 @@ class ConnectionManager:
             except Exception:
                 pass
         return True
+
+    # ------------------------------------------------------------------
+    # 경기 전 준비 (친구 대결)
+    # ------------------------------------------------------------------
+    def _drop_ready(self, slot: Optional[int]) -> None:
+        """한 자리의 준비를 취소 (준비한 자리가 하나도 없으면 자동 시작 대기도 끔)"""
+        if slot is None:
+            return
+        self.ready_slots.discard(slot)
+        if not self.ready_slots:
+            self._cancel_ready_timer()
+
+    def _clear_ready(self) -> None:
+        self.ready_slots.clear()
+        self._cancel_ready_timer()
+
+    def _cancel_ready_timer(self) -> None:
+        self._ready_deadline = None
+        if self._ready_task is not None:
+            self._ready_task.cancel()
+            self._ready_task = None
+
+    async def _run_ready_timer(self, deadline: float) -> None:
+        await asyncio.sleep(max(0.0, deadline - self._now()))
+        # 경기를 시작하면 대기 작업을 취소하므로, 먼저 이 작업을 떼어 내 자기 자신을 취소하지 않게 함
+        self._ready_task = None
+        self._ready_deadline = None
+        if self.is_match_active or not self.ready_slots or self._host_slot() is None:
+            return
+        logger.info(f"Ready wait over: starting with ready slots {sorted(self.ready_slots)}")
+        await self._start_match(self._ready_duration, None)
+
+    async def _handle_player_ready(self, websocket: WebSocket, data: dict):
+        """선수의 시작 요청 = 준비 완료. 접속한 자리가 모두 준비되면 바로 시작 (혼자면 바로 AI 대결),
+        한 자리만 준비되면 READY_WAIT_SECONDS 뒤 자동 시작. ready가 false면 준비 취소"""
+        slot = self._slot_of(websocket)
+        if slot is None:
+            return # 관람 화면은 준비하지 않음 (관람 운영자의 [경기 시작]은 match_start로 바로 시작)
+        if data.get("ready") is False:
+            if slot in self.ready_slots:
+                self._drop_ready(slot)
+                await self.broadcast_room_state()
+            return
+        if self.is_match_active:
+            # 이미 진행 중이면 요청한 선수만 현재 경기에 합류
+            await self._send(websocket, {"type": "match_started", **self._match_state()})
+            return
+        if not self.ready_slots:
+            # 처음 준비한 선수가 경기 시간과 난이도를 정함
+            duration = _to_int(data.get("duration")) or DEFAULT_MATCH_DURATION
+            self._ready_duration = max(MIN_MATCH_DURATION, min(MAX_MATCH_DURATION, duration))
+            difficulty = data.get("difficulty")
+            if difficulty in VALID_DIFFICULTIES:
+                self.difficulty = difficulty
+        self.ready_slots.add(slot)
+        if set(self.player_clients) <= self.ready_slots:
+            await self._start_match(self._ready_duration, None)
+            return
+        if self._ready_task is None:
+            # 기한은 처음 준비한 때부터 한 번만 정함 (다시 준비해도 늘어나지 않음)
+            self._ready_deadline = self._now() + READY_WAIT_SECONDS
+            self._ready_task = self._spawn(self._run_ready_timer(self._ready_deadline))
+        await self.broadcast_room_state()
 
     async def _reject_busy(self, websocket: WebSocket, role: str, session_id: Optional[str]) -> None:
         """요청한 자리를 다른 기기가 쓰는 중: 알리고 연결을 닫음 (클라이언트는 잠시 후 다시 시도)"""
@@ -352,6 +438,9 @@ class ConnectionManager:
         elif msg_type == "match_start":
             await self._handle_match_start(websocket, data)
 
+        elif msg_type == "player_ready":
+            await self._handle_player_ready(websocket, data)
+
         elif msg_type == "match_pause":
             await self._handle_match_pause(data)
 
@@ -431,10 +520,13 @@ class ConnectionManager:
 
         duration = _to_int(data.get("duration")) or DEFAULT_MATCH_DURATION
         duration = max(MIN_MATCH_DURATION, min(MAX_MATCH_DURATION, duration))
-        difficulty = data.get("difficulty")
+        await self._start_match(duration, data.get("difficulty"))
+
+    async def _start_match(self, duration: int, difficulty: Any) -> None:
+        """새 경기 시작. 상태는 첫 await 전에 모두 정해, 방송하는 사이 들어온 요청이 경기를 다시 열지 않게 함"""
         if difficulty in VALID_DIFFICULTIES:
             self.difficulty = difficulty
-
+        self._clear_ready()
         self.match_id += 1
         self.is_match_active = True
         self.is_match_paused = False
@@ -446,6 +538,7 @@ class ConnectionManager:
         self._start_match_timer()
         logger.info(f"Match {self.match_id} started ({duration}s, difficulty={self.difficulty})")
         await self.broadcast_to_all({"type": "match_started", **self._match_state()})
+        await self.broadcast_room_state()
 
     async def _handle_match_pause(self, data: dict):
         if not self._is_current_match(data) or self.is_match_paused:
@@ -479,6 +572,7 @@ class ConnectionManager:
         self.is_match_paused = False
         self._cancel_match_timer()
         self.target_points.clear()
+        self._clear_ready()
         abort_msg = data.get("message")
         if not isinstance(abort_msg, str) or not abort_msg.strip():
             abort_msg = "경기가 관리자 또는 플레이어에 의해 중단되었습니다."
@@ -552,6 +646,7 @@ class ConnectionManager:
         self.is_match_paused = False
         self._match_task = None # 방송 도중 새 경기가 시작돼도 이 종료 방송은 취소되지 않도록 분리
         self.target_points.clear()
+        self._clear_ready()
 
         winner = "DRAW"
         if self.p1_score > self.p2_score:

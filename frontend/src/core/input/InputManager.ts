@@ -44,6 +44,13 @@ export class InputManager {
   public isP2Connected: boolean = false;
   public spectatorCount: number = 0;
   public versusMode: 'VERSUS_PVP' | 'VERSUS_AI' = 'VERSUS_AI';
+  /** 서버가 경기 전 준비(친구 대결은 둘 다 준비되면 시작)를 지원하는지. 옛 서버면 false라 예전처럼 바로 시작 요청 */
+  public readySupported: boolean = false;
+  /** 경기 전 '준비 완료'한 자리 */
+  public p1Ready: boolean = false;
+  public p2Ready: boolean = false;
+  /** 한 명만 준비했을 때 자동 시작 예정 시각 (Date.now() 기준 ms, 대기 중이 아니면 0) */
+  public readyDeadlineAt: number = 0;
   public currentDifficulty: Difficulty = 'normal';
 
   public systemStatus: SystemStatus = {
@@ -227,6 +234,7 @@ export class InputManager {
         if (this.ws !== socket) return;
         this.isConnectedToServer = false;
         this.ws = null;
+        this.clearReady();
         if (event.code === CLOSE_CODE_REPLACED || event.code === CLOSE_CODE_SLOT_BUSY) {
           const issue: ConnectionIssue = event.code === CLOSE_CODE_REPLACED ? 'replaced' : 'slot_busy';
           const isNewIssue = this.connectionIssue !== issue;
@@ -274,12 +282,37 @@ export class InputManager {
       this.ws = null;
     }
     this.isConnectedToServer = false;
+    this.clearReady();
     this.notifyStatus();
   }
 
   public reconnect() {
     this.disconnect();
     this.connect();
+  }
+
+  /** client_assigned·room_state에 함께 오는 방 정보 (접속한 자리, 경기 전 준비 상태) */
+  private applyRoomInfo(data: Record<string, unknown>) {
+    this.isP1Connected = Boolean(data.p1Connected);
+    this.isP2Connected = Boolean(data.p2Connected);
+    this.spectatorCount = Number(data.spectatorCount || 0);
+    this.versusMode = (data.mode as 'VERSUS_PVP' | 'VERSUS_AI') || 'VERSUS_AI';
+    this.readySupported = 'p1Ready' in data;
+    this.p1Ready = Boolean(data.p1Ready);
+    this.p2Ready = Boolean(data.p2Ready);
+    const remaining = typeof data.readyRemaining === 'number' ? data.readyRemaining : null;
+    this.readyDeadlineAt = remaining !== null ? Date.now() + remaining * 1000 : 0;
+  }
+
+  private clearReady() {
+    this.p1Ready = false;
+    this.p2Ready = false;
+    this.readyDeadlineAt = 0;
+  }
+
+  /** 그 자리가 경기 전 '준비 완료'인지 */
+  public isSlotReady(slot: number | null): boolean {
+    return slot === 1 ? this.p1Ready : slot === 2 ? this.p2Ready : false;
   }
 
   private handleServerMessage(data: Record<string, unknown>) {
@@ -291,10 +324,7 @@ export class InputManager {
         this.requestedRole = this.clientRole;
       }
       this.playerId = (data.playerId as number | null) ?? null;
-      this.isP1Connected = Boolean(data.p1Connected);
-      this.isP2Connected = Boolean(data.p2Connected);
-      this.spectatorCount = Number(data.spectatorCount || 0);
-      this.versusMode = (data.mode as 'VERSUS_PVP' | 'VERSUS_AI') || 'VERSUS_AI';
+      this.applyRoomInfo(data);
       this.connectionIssue = null;
       if (this.onClientAssigned) {
         this.onClientAssigned(this.clientRole, this.playerId);
@@ -307,10 +337,7 @@ export class InputManager {
     }
 
     if (type === 'room_state') {
-      this.isP1Connected = Boolean(data.p1Connected);
-      this.isP2Connected = Boolean(data.p2Connected);
-      this.spectatorCount = Number(data.spectatorCount || 0);
-      this.versusMode = (data.mode as 'VERSUS_PVP' | 'VERSUS_AI') || 'VERSUS_AI';
+      this.applyRoomInfo(data);
       this.systemStatus.spectator_count = this.spectatorCount;
       if (this.onRoomStateChange) {
         this.onRoomStateChange(data);
@@ -360,6 +387,8 @@ export class InputManager {
     }
 
     if (type === 'match_started') {
+      // 경기가 시작되면 준비는 끝남 (그 전에 만들어진 room_state가 늦게 와도 경기 중에는 준비 표시를 쓰지 않음)
+      this.clearReady();
       if (this.onMatchStarted) {
         this.onMatchStarted(parseMatchInfo(data));
       }
@@ -440,6 +469,11 @@ export class InputManager {
 
   public sendMatchStart(duration: number = 60, difficulty?: Difficulty) {
     return this.send({ type: 'match_start', duration, difficulty });
+  }
+
+  /** 경기 전 준비 완료(ready=true) 또는 취소. 서버가 둘 다 준비되면(혼자면 바로) 경기를 시작함 */
+  public sendPlayerReady(ready: boolean, duration?: number, difficulty?: Difficulty) {
+    return this.send({ type: 'player_ready', ready, duration, difficulty });
   }
 
   public sendMatchPause(matchId: number) {

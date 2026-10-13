@@ -22,6 +22,8 @@ export interface PlayerHUDProps {
   isP1Connected: boolean;
   isP2Connected: boolean;
   isVRSupported: boolean;
+  /** 친구 대결 준비 띠가 보이는 중 (가운데 '준비되면 시작!' 안내를 숨김) */
+  hideStartHint?: boolean;
   onStartGame: () => void;
   onPauseGame: () => void;
   onAbortGame?: () => void;
@@ -52,6 +54,7 @@ export function PlayerHUD({
   isP1Connected,
   isP2Connected,
   isVRSupported,
+  hideStartHint = false,
   onStartGame,
   onPauseGame,
   onAbortGame,
@@ -132,8 +135,8 @@ export function PlayerHUD({
         )}
       </header>
 
-      {/* 가운데: 경기 전 안내 */}
-      {!isPlaying && (
+      {/* 가운데: 경기 전 안내 (준비 띠가 보이면 숨김) */}
+      {!isPlaying && !hideStartHint && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
           {connectionIssue ? (
             <Panel accent="danger" solid className="max-w-lg px-7 py-6 text-center">

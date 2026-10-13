@@ -61,6 +61,8 @@ interface MainMenuModalProps {
   isP2Connected?: boolean;
   /** 역할 자리 관련 연결 문제 (다른 기기가 사용 중 등) */
   connectionIssue?: ConnectionIssue | null;
+  /** 머리글 아래 전체 너비 알림 (친구 대결 준비 띠) */
+  notice?: React.ReactNode;
 }
 
 /**
@@ -84,6 +86,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   isP1Connected = false,
   isP2Connected = false,
   connectionIssue = null,
+  notice,
 }) => {
   const [step, setStep] = useState<MenuStep>('welcome');
 
@@ -141,6 +144,8 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
           </div>
         )}
 
+        {notice}
+
         {/* 상태 · 단계 탭 */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-ink/30 px-6 py-3 short:py-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -151,7 +156,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
             {!isSpectator &&
               (isPvPReady ? (
                 <Pill tone="ok" icon={Users} size="lg">
-                  친구와 1:1 대결 준비 완료
+                  친구와 1:1 대결
                 </Pill>
               ) : (
                 <Pill tone="ai" icon={Bot} size="lg">
@@ -261,7 +266,8 @@ function Feature({ icon: Icon, title, desc, tone }: { icon: typeof Crosshair; ti
   );
 }
 
-function SlotLine({ slot, label, state }: { slot: 1 | 2; label: string; state: 'me' | 'ready' | 'ai' }) {
+/** 메뉴의 자리 한 줄: 이 기기 / 입장(접속함) / AI가 맡아요 */
+function SlotLine({ slot, label, state }: { slot: 1 | 2; label: string; state: 'me' | 'joined' | 'ai' }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-line bg-ink/40 px-3 py-2.5">
       <span className={cx('h-7 w-1 rounded-full', slot === 1 ? 'bg-p1' : 'bg-p2')} aria-hidden="true" />
@@ -272,9 +278,9 @@ function SlotLine({ slot, label, state }: { slot: 1 | 2; label: string; state: '
           <Pill tone="neutral" size="sm">
             이 기기
           </Pill>
-        ) : state === 'ready' ? (
+        ) : state === 'joined' ? (
           <Pill tone="ok" dot size="sm">
-            준비 완료
+            입장
           </Pill>
         ) : (
           <Pill tone="ai" icon={Bot} size="sm">
@@ -328,14 +334,14 @@ function WelcomeStep({
           </p>
         ) : (
           <div className="mt-3 flex flex-col gap-2">
-            <SlotLine slot={1} label={mySlot === 1 || rivalConnected ? ROLE_NAME.P1 : 'AI 라이벌'} state={mySlot === 1 ? 'me' : rivalConnected ? 'ready' : 'ai'} />
-            <SlotLine slot={2} label={mySlot === 2 || rivalConnected ? ROLE_NAME.P2 : 'AI 라이벌'} state={mySlot === 2 ? 'me' : rivalConnected ? 'ready' : 'ai'} />
+            <SlotLine slot={1} label={mySlot === 1 || rivalConnected ? ROLE_NAME.P1 : 'AI 라이벌'} state={mySlot === 1 ? 'me' : rivalConnected ? 'joined' : 'ai'} />
+            <SlotLine slot={2} label={mySlot === 2 || rivalConnected ? ROLE_NAME.P2 : 'AI 라이벌'} state={mySlot === 2 ? 'me' : rivalConnected ? 'joined' : 'ai'} />
           </div>
         )}
         {!isSpectator && (
           <p className="mt-3 text-[13px] leading-relaxed text-fg-3">
             {isPvPReady
-              ? '두 사람 모두 준비됐어요. 누구든 시작하면 함께 경기가 시작돼요.'
+              ? '두 사람 모두 입장했어요. 둘 다 시작을 누르면 경기가 시작돼요. 한 명만 누르면 15초 뒤에 시작해요.'
               : `${rivalSlot}P 자리가 비어 있어 AI 라이벌과 대결해요. 친구가 접속하면 1:1 대결로 바뀌어요.`}
           </p>
         )}

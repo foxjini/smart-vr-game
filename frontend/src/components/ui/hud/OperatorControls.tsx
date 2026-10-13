@@ -87,6 +87,21 @@ export function OperatorControls({
   if (matchRunning) {
     return (
       <div className={cx('hud-interactive flex items-center gap-2', className)}>
+        {/* 경기 중에도 VR로 들어가 이어서 할 수 있게 (상대가 먼저 시작해 PC 화면으로 경기에 들어온 선수용) */}
+        {mode === 'player' && onEnterVR && isVRSupported && (
+          <Button
+            id="btn-enter-vr"
+            icon={Headset}
+            size="sm"
+            variant="vr"
+            onClick={onEnterVR}
+            aria-label="VR로 이어서 하기"
+            title="Quest VR로 들어가 이 경기를 이어서 해요"
+            labelClassName="hidden lg:inline"
+          >
+            VR로 이어서
+          </Button>
+        )}
         <Button
           id="btn-pause"
           icon={isPaused ? Play : Pause}

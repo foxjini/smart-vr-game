@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { GameStats, SystemStatus, VersusMatchStats, ClientRole, SpectatorCameraMode, Difficulty, ConnectionIssue } from '@/types';
-import { MatchResultSummary } from '@/components/ui/matchInfo';
+import { MatchResultSummary, NO_READY, ReadyInfo } from '@/components/ui/matchInfo';
 import { PlayerHUD } from '@/components/ui/hud/PlayerHUD';
 import { BroadcastOverlay } from '@/components/ui/hud/BroadcastOverlay';
 
@@ -36,6 +36,10 @@ interface GameHUDProps {
   spectatorResultUntil?: number;
   /** 관전 화면 대기 화면의 최근 경기 */
   recentMatches?: MatchResultSummary[];
+  /** 경기 전 준비 상태 (관전 화면의 준비 띠·자리 표시) */
+  readyInfo?: ReadyInfo;
+  /** 선수 화면: 준비 띠가 보이면 가운데 '준비되면 시작!' 안내를 숨김 */
+  hideStartHint?: boolean;
 }
 
 /** 역할에 따라 관전 중계 화면 또는 플레이어 HUD를 보여 줌 */
@@ -64,6 +68,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   spectatorResult = null,
   spectatorResultUntil = 0,
   recentMatches = [],
+  readyInfo = NO_READY,
+  hideStartHint = false,
 }) => {
   if (clientRole === 'SPECTATOR') {
     return (
@@ -83,6 +89,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         result={spectatorResult}
         resultUntil={spectatorResultUntil}
         recentMatches={recentMatches}
+        readyInfo={readyInfo}
         onStartGame={onStartGame}
         onPauseGame={onPauseGame}
         onAbortGame={onAbortGame}
@@ -106,6 +113,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       isP1Connected={isP1Connected}
       isP2Connected={isP2Connected}
       isVRSupported={isVRSupported}
+      hideStartHint={hideStartHint}
       onStartGame={onStartGame}
       onPauseGame={onPauseGame}
       onAbortGame={onAbortGame}

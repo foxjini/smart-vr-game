@@ -18,6 +18,8 @@ interface GameOverModalProps {
   difficulty: Difficulty;
   theme: ThemeType;
   onRestart: () => void;
+  /** 창 머리글 아래 알림 (친구 대결 준비 띠) */
+  notice?: React.ReactNode;
   onOpenSettings: () => void;
   onViewLeaderboard: (highlightId?: string) => void;
   onGoToMainMenu?: () => void;
@@ -32,6 +34,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   difficulty,
   theme,
   onRestart,
+  notice,
   onOpenSettings,
   onViewLeaderboard,
   onGoToMainMenu,
@@ -82,6 +85,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
       eyebrow="경기 결과"
       icon={Trophy}
       title={title}
+      notice={notice}
       headerAside={
         <Pill tone={winSlot === 1 ? 'p1' : winSlot === 2 ? 'p2' : 'gold'} size="lg" className="max-w-[340px]">
           {winnerBannerText(result.winner, result.aiSlot)}

@@ -38,9 +38,9 @@ import { AvatarFactory, AvatarVisual } from './visual/AvatarModel';
 import { PoseSmoother } from './visual/PoseSmoother';
 import { HoloTextFactory } from './visual/text/HoloText';
 import type { Text } from 'troika-three-text';
-import { VR_TEXT } from './visual/text/vrStrings';
+import { VR_TEXT, vrFormat } from './visual/text/vrStrings';
 import { HoloScoreboard } from './visual/HoloScoreboard';
-import { ResultPanel, ResultPlayer } from './visual/ResultPanel';
+import { LobbyPlayer, ResultPanel, ResultPlayer } from './visual/ResultPanel';
 import { aiSlotOf, formatClock, normalizeWinner, slotName, winnerHeadline } from '@/components/ui/matchInfo';
 import { KEYWORDS_1PT, KEYWORDS_2PT, KEYWORDS_MINUS, keywordPoints } from '@/constants/labels';
 
@@ -82,6 +82,11 @@ const MINUS_TARGET_MAX: Record<Difficulty, number> = { easy: 1, normal: 2, hard:
 const MISS_BEAM_LENGTH = 55;
 /** 재장전 시간(초) */
 const RELOAD_TIME = 1.2;
+/**
+ * 경기가 끝난 뒤 발사 입력(트리거·Space·클릭)으로 다시 시작(준비)하지 않는 시간(ms).
+ * 경기 막판에 쏘던 트리거 때문에 결과를 보기도 전에 새 경기가 시작되지 않게 함 (버튼·VR 진입은 해당 없음)
+ */
+const RESTART_LOCK_MS = 3000;
 /** 선수 PC 화면 시야각 (관전 화면은 SpectatorCameraController가 60으로 바꿈) */
 const PLAYER_FOV = 75;
 
@@ -180,6 +185,12 @@ export class ShootingArenaEngine {
   public isPaused: boolean = false;
   public clientRole: ClientRole = 'P1';
   public vrExitHoldTimer: number = 0;
+  /** 마지막 경기가 끝난 시각 (performance.now, 다시 시작 잠금용) */
+  private matchEndedAt = -Infinity;
+  /** VR 정면 판의 쓰임: 경기 전 대기 판 / 경기 결과판 / 숨김 */
+  private vrPanelMode: 'hidden' | 'lobby' | 'result' = 'hidden';
+  /** 대기 판·안내 줄에 마지막으로 그린 내용 (같으면 다시 그리지 않음) */
+  private vrPanelKey = '';
 
   // AI 및 관람 카메라
   public cyberAI = new CyberAIRival('normal');
@@ -429,16 +440,22 @@ export class ShootingArenaEngine {
     this.scheduleWarmUp(800);
   }
 
-  /** VR 세션이 시작되면 72Hz를 요청하고 경기 시작 */
+  /** VR 세션이 시작되면 72Hz를 요청하고 경기 시작 (친구 대결은 '준비 완료', 둘 다 준비되면 시작) */
   private onXRSessionStart = () => {
     requestTargetFrameRate(this.renderer.xr.getSession());
     this.startGame();
+    // 친구 대결이면 상대가 준비할 때까지 정면에 대기 판 (혼자면 서버가 바로 시작하므로 띄우지 않음)
+    if (!this.isPlaying && this.isVersusRoom()) this.showVRPanel('lobby');
   };
 
   private onXRSessionEnd = () => {
     if (this.isPlaying) {
       this.abortGame('플레이어 VR 세션 종료');
+    } else {
+      // 경기 전 대기 중에 VR을 나가면 준비 취소
+      this.cancelReady();
     }
+    this.showVRPanel('hidden');
   };
 
   /**
@@ -885,6 +902,74 @@ export class ShootingArenaEngine {
     this.resultPanel.show({ headline, headlineColor, winSlot, mySlot: this.localSlot, p1: player(1), p2: player(2) });
   }
 
+  /** VR 정면 판 (대기 판·결과판·숨김). 위치는 리그 기준 (0, 1.6, -2.5), VR 중인 선수에게만 보임 */
+  private showVRPanel(mode: 'hidden' | 'lobby' | 'result') {
+    this.vrPanelMode = mode;
+    this.vrPanelKey = '';
+    if (!this.vrPromptMesh) return;
+    this.vrPromptMesh.position.set(0, 1.6, -2.5);
+    this.vrPromptMesh.visible = mode !== 'hidden' && this.renderer.xr.isPresenting && this.localSlot !== null;
+    this.refreshVRPanel();
+  }
+
+  /**
+   * 대기 판 내용과 아래 안내 줄을 지금 상태에 맞춤 (판이 보이는 동안 10Hz, 글자가 바뀔 때만 다시 그림).
+   * 안내 줄 우선순위: 내가 준비함(상대 기다리는 중·남은 초) → 다시 시작 잠금 → 상대 준비함 → 기본
+   */
+  private refreshVRPanel() {
+    if (!this.vrPromptMesh?.visible || this.isPlaying || this.vrPanelMode === 'hidden') return;
+    const me = this.localSlot;
+    if (me === null) return;
+    const im = this.inputManager;
+    const rival: PlayerSlot = me === 1 ? 2 : 1;
+    const rivalName = rival === 1 ? VR_TEXT.p1 : VR_TEXT.p2;
+    const rivalConnected = rival === 1 ? im.isP1Connected : im.isP2Connected;
+    const meReady = im.isSlotReady(me);
+    const rivalReady = im.isSlotReady(rival);
+    const secs = im.readyDeadlineAt > 0 ? Math.max(0, Math.ceil((im.readyDeadlineAt - Date.now()) / 1000)) : 0;
+    const lockLeft = Math.ceil((RESTART_LOCK_MS - (performance.now() - this.matchEndedAt)) / 1000);
+    const countdown = secs > 0 ? vrFormat(VR_TEXT.startsIn, { n: secs }) : VR_TEXT.startingSoon;
+
+    let hint: string;
+    let hintColor: number = PALETTE.fg;
+    if (meReady) {
+      const waiting = rivalReady ? VR_TEXT.startingSoon : rivalConnected ? `${vrFormat(VR_TEXT.waitingFor, { name: rivalName })} · ${countdown}` : countdown;
+      hint = `${waiting}    ·    ${VR_TEXT.exitHintWaiting}`;
+    } else if (this.vrPanelMode === 'result' && lockLeft > 0) {
+      hint = `${vrFormat(VR_TEXT.restartLocked, { n: lockLeft })}    ·    ${VR_TEXT.exitHint}`;
+      hintColor = PALETTE.fg2;
+    } else if (rivalReady) {
+      hint = `${vrFormat(VR_TEXT.opponentReady, { name: rivalName })}    ·    ${VR_TEXT.exitHint}`;
+      hintColor = PALETTE.gold;
+    } else {
+      hint = `${this.vrPanelMode === 'lobby' ? VR_TEXT.readyHint : VR_TEXT.restartHint}    ·    ${VR_TEXT.exitHint}`;
+    }
+
+    let headline = '';
+    if (this.vrPanelMode === 'lobby') {
+      if (meReady && rivalReady) headline = VR_TEXT.startingSoon;
+      else if (meReady) headline = rivalConnected ? vrFormat(VR_TEXT.waitingFor, { name: rivalName }) : countdown;
+      else if (rivalReady) headline = `${rivalName} ${VR_TEXT.statusReady}`;
+      else headline = VR_TEXT.readyHint;
+    }
+    const key = `${this.vrPanelMode}|${headline}|${hint}|${hintColor}|${meReady}|${rivalReady}|${im.isP1Connected}|${im.isP2Connected}`;
+    if (key === this.vrPanelKey) return;
+    this.vrPanelKey = key;
+
+    if (this.vrPanelMode === 'lobby') {
+      const ai = this.aiSeat();
+      const player = (slot: PlayerSlot): LobbyPlayer => {
+        const ready = im.isSlotReady(slot);
+        const connected = slot === 1 ? im.isP1Connected : im.isP2Connected;
+        const status = ready ? VR_TEXT.statusReady : connected || slot === me ? VR_TEXT.statusNotReady : VR_TEXT.statusAi;
+        return { name: slotName(slot, ai), status, ready };
+      };
+      const headlineColor = meReady && rivalReady ? PALETTE.gold : rival === 1 ? PALETTE.p1 : PALETTE.p2;
+      this.resultPanel.showLobby({ headline, headlineColor, mySlot: me, p1: player(1), p2: player(2) });
+    }
+    this.resultPanel.setHint(hint, hintColor);
+  }
+
   /** 듀얼 OLED 디스플레이 업데이트 (내용이 바뀐 블래스터만 다시 그림) */
   private updateBlasterDisplays() {
     this.renderOLED(this.p1Blaster, this.stats, this.p2Stats);
@@ -1018,7 +1103,9 @@ export class ShootingArenaEngine {
       if (b) b.displayKey = '';
     });
     this.updateBlasterDisplays();
-    this.updateVRPrompt(this.vrPromptState.isGameOver, this.vrPromptState.winner);
+    // 결과판을 같은 내용으로 다시 그림 (대기 판이면 다음 갱신 때 다시 그림)
+    if (this.vrPanelMode === 'lobby') this.vrPanelKey = '';
+    else this.updateVRPrompt(this.vrPromptState.isGameOver, this.vrPromptState.winner);
   }
 
   /** 표적을 만들어 장면에 추가 (겉모습은 공유 지오메트리, 사격 판정은 예전 모양 그대로) */
@@ -1146,6 +1233,8 @@ export class ShootingArenaEngine {
     if (this.disposed || this.clientRole === 'SPECTATOR') return;
 
     if (!this.isPlaying) {
+      // 경기가 막 끝났으면 결과를 볼 수 있게 잠시 다시 시작하지 않음
+      if (performance.now() - this.matchEndedAt < RESTART_LOCK_MS) return;
       this.startGame();
       return;
     }
@@ -1310,7 +1399,9 @@ export class ShootingArenaEngine {
   public handleReload() {
     if (this.disposed || this.clientRole === 'SPECTATOR') return;
     if (!this.isPlaying) {
-      // 대기/게임오버 상태에서 그립을 쥐면 VR 모드 종료 후 브라우저 복귀
+      // 대기/게임오버 상태에서 그립을 쥐면 VR 모드 종료 후 브라우저 복귀.
+      // 단, 준비를 마치고 상대를 기다리는 중에는 그립으로 VR을 끄지 않음 (A·B 버튼은 그대로 VR 종료)
+      if (this.isLocalReady()) return;
       this.exitVR();
       return;
     }
@@ -1457,6 +1548,23 @@ export class ShootingArenaEngine {
     };
   }
 
+  /** 내가 경기 전 '준비 완료' 상태인지 (서버가 알려 준 값) */
+  public isLocalReady(): boolean {
+    return !this.isPlaying && this.inputManager.isSlotReady(this.localSlot);
+  }
+
+  /** 준비 취소 (2D 준비 띠의 [준비 취소], ESC, VR 나가기) */
+  public cancelReady() {
+    if (this.disposed || !this.isLocalReady()) return;
+    this.inputManager.sendPlayerReady(false);
+  }
+
+  /** 두 선수가 모두 접속한 친구 대결 방이고, 서버가 준비를 지원하는지 */
+  private isVersusRoom(): boolean {
+    const im = this.inputManager;
+    return im.isConnectedToServer && im.readySupported && im.isP1Connected && im.isP2Connected;
+  }
+
   /** 서버 경기로 진행할지: 서버에 연결돼 있고, 플레이어이거나 (관람 운영자는) 접속한 플레이어가 있을 때 */
   private shouldUseServerMatch(): boolean {
     const im = this.inputManager;
@@ -1475,6 +1583,14 @@ export class ShootingArenaEngine {
     if (this.isPlaying || this.pendingStartTimer) return;
     // 내 역할 자리를 다른 기기가 쓰는 중이면 혼자만 보이는 로컬 경기를 시작하지 않음
     if (this.inputManager.connectionIssue) return;
+    // 선수의 시작 요청은 '준비 완료': 서버가 접속한 선수 모두 준비되면 시작 (혼자면 바로, 한 명만 준비하면 잠시 뒤).
+    // 상대 헤드셋은 그 기기에서 직접 VR 버튼을 눌러야 VR에 들어갈 수 있어서, 먼저 누른 쪽이 상대를 기다려 줌.
+    // 서버가 준비를 지원하지 않으면(옛 서버) 아래의 예전 방식으로 바로 시작 요청
+    const im = this.inputManager;
+    if (this.localSlot !== null && im.isConnectedToServer && im.readySupported) {
+      if (!this.isLocalReady()) im.sendPlayerReady(true, MATCH_DURATION, this.currentDifficulty);
+      return;
+    }
     if (this.shouldUseServerMatch() && this.inputManager.sendMatchStart(MATCH_DURATION, this.currentDifficulty)) {
       // 서버 응답이 없으면 로컬 경기로 대체
       this.pendingStartTimer = setTimeout(() => {
@@ -1534,9 +1650,7 @@ export class ShootingArenaEngine {
     this.timeSinceRemoteSpawn = 0;
     this.lastReportedSecond = -1;
     this.hasWarned10s = false;
-    if (this.vrPromptMesh) {
-      this.vrPromptMesh.visible = false;
-    }
+    this.showVRPanel('hidden');
     this.stats = this.freshStats();
     this.p2Stats = this.freshStats();
     if (info) {
@@ -1634,6 +1748,7 @@ export class ShootingArenaEngine {
   private stopGameLocal(winner: string = 'DRAW') {
     this.isPlaying = false;
     this.isPaused = false;
+    this.matchEndedAt = performance.now();
     if (this.matchId !== null) {
       this.lastEndedMatchId = this.matchId;
     }
@@ -1645,11 +1760,8 @@ export class ShootingArenaEngine {
       if (!t.isHit && t.despawn < 0) this.beginDespawn(t);
     }
     this.updateVRPrompt(true, winner);
-    if (this.vrPromptMesh) {
-      // VR 플레이어 정면에 결과판 표시 (다시 시작 / VR 종료 안내)
-      this.vrPromptMesh.position.set(0, 1.6, -2.5);
-      this.vrPromptMesh.visible = this.renderer.xr.isPresenting && this.localSlot !== null;
-    }
+    // VR 플레이어 정면에 결과판 표시 (아래 안내 줄: 다시 시작 잠금 → 다시 시작 / VR 종료)
+    this.showVRPanel('result');
     this.soundManager.playGameOver();
 
     const amWinner =
@@ -1811,6 +1923,7 @@ export class ShootingArenaEngine {
     if (this.oledUpdateTimer >= 0.1) {
       this.oledUpdateTimer = 0;
       this.updateBlasterDisplays();
+      this.refreshVRPanel();
     }
 
     // 3. 로컬 6DoF 조준 제어

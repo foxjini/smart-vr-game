@@ -22,6 +22,17 @@ export interface MatchResultSummary {
   endedAt: number;
 }
 
+/** 경기 전 준비 상태 (서버 room_state의 p1Ready·p2Ready·readyRemaining) */
+export interface ReadyInfo {
+  /** 서버가 준비를 지원함 (옛 서버면 false) */
+  supported: boolean;
+  p1: boolean;
+  p2: boolean;
+  /** 한 명만 준비했을 때 자동 시작 예정 시각 (Date.now() 기준 ms, 대기 중이 아니면 0) */
+  deadlineAt: number;
+}
+export const NO_READY: ReadyInfo = { supported: false, p1: false, p2: false, deadlineAt: 0 };
+
 /**
  * AI 라이벌이 맡은 자리 (친구 대결이면 null).
  * 서버 경기는 비어 있는 자리를 AI가 맡고, 서버 정보가 없으면(혼자 연습) 내 상대 자리.

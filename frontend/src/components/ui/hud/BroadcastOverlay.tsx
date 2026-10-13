@@ -5,13 +5,14 @@ import { TriangleAlert } from 'lucide-react';
 import { ConnectionIssue, Difficulty, GameStats, SpectatorCameraMode, VersusMatchStats } from '@/types';
 import { CAMERA_NAME, CAMERA_ORDER } from '@/constants/labels';
 import { Pill, cx } from '@/components/ui/kit';
-import { MatchResultSummary, aiSlotOf } from '@/components/ui/matchInfo';
+import { MatchResultSummary, NO_READY, ReadyInfo, aiSlotOf } from '@/components/ui/matchInfo';
 import { useIdle, useStageScale } from './hooks';
 import { OperatorControls } from './OperatorControls';
 import { connectionText } from './PlayerHUD';
 import { AttractScreen } from './broadcast/AttractScreen';
 import { LiveBroadcast } from './broadcast/LiveBroadcast';
 import { BroadcastResult } from './broadcast/BroadcastResult';
+import { ReadyStrip } from './broadcast/ReadyStrip';
 
 export interface BroadcastOverlayProps {
   stats: GameStats;
@@ -30,6 +31,8 @@ export interface BroadcastOverlayProps {
   result: MatchResultSummary | null;
   resultUntil: number;
   recentMatches: MatchResultSummary[];
+  /** 경기 전 준비 상태 (친구 대결 준비 띠·대기 화면 자리 표시) */
+  readyInfo?: ReadyInfo;
   onStartGame: () => void;
   onPauseGame: () => void;
   onAbortGame?: () => void;
@@ -72,6 +75,7 @@ export function BroadcastOverlay({
   result,
   resultUntil,
   recentMatches,
+  readyInfo = NO_READY,
   onStartGame,
   onPauseGame,
   onAbortGame,
@@ -108,8 +112,11 @@ export function BroadcastOverlay({
             isP2Connected={isP2Connected}
             difficulty={difficulty}
             recentMatches={recentMatches}
+            readyInfo={readyInfo}
           />
         )}
+        {/* 친구 대결 준비 띠 (대기·결과 화면 위쪽 가운데) */}
+        {!live && <ReadyStrip readyInfo={readyInfo} isP1Connected={isP1Connected} isP2Connected={isP2Connected} />}
       </div>
 
       {/* 운영 버튼 (마우스를 움직이면 나타남) */}

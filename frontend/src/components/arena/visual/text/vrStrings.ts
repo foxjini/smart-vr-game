@@ -28,6 +28,20 @@ export const VR_TEXT = {
   restartHint: '트리거: 다시 시작',
   // 경기 밖에서는 그립·A·B·X·Y를 누르는 즉시 VR이 끝남 (경기 중 A·B·X·Y는 1.2초 길게)
   exitHint: '그립 또는 A·B 버튼: VR 종료',
+  // 경기 전 대기 판 (친구 대결은 두 선수가 모두 준비되면 시작, 한 명만 준비하면 잠시 뒤 자동 시작)
+  lobbyTitle: '대결 준비',
+  statusReady: '준비 완료',
+  statusNotReady: '준비 중',
+  statusAi: 'AI가 맡아요',
+  startingSoon: '곧 시작!',
+  readyHint: '트리거를 당기면 준비 완료',
+  // 기다리는 동안은 그립으로 VR이 꺼지지 않음
+  exitHintWaiting: 'A·B 버튼: VR 종료',
+  // {name}·{n} 자리에 이름·숫자를 넣어 씀 (vrFormat). 글리프는 이 틀 문장으로 미리 만듦
+  waitingFor: '{name}를 기다리는 중',
+  startsIn: '{n}초 뒤 시작',
+  restartLocked: '{n}초 뒤 트리거로 다시 시작',
+  opponentReady: '{name} 준비 완료! 트리거: 바로 시작',
   // 결과판 승자 문구 (ui/matchInfo.ts의 winnerHeadline과 같은 글자)
   win1: '1P 승리',
   win2: '2P 승리',
@@ -41,6 +55,11 @@ export const VR_TEXT = {
   fps: 'FPS',
   draws: 'DRAW',
 } as const;
+
+/** 틀 문장의 {name}·{n} 같은 자리에 값을 넣음 */
+export function vrFormat(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => String(vars[key] ?? ''));
+}
 
 const DIGITS = '0123456789';
 const SYMBOLS = ' :-%+x.!·/';

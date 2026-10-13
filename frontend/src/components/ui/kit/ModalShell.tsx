@@ -56,6 +56,8 @@ interface ModalShellProps {
   footer?: React.ReactNode;
   /** 제목 오른쪽(닫기 버튼 앞)에 붙는 내용 */
   headerAside?: React.ReactNode;
+  /** 머리글 바로 아래 전체 너비 알림 (예: 친구 대결 준비 띠) */
+  notice?: React.ReactNode;
   bodyClassName?: string;
   children: React.ReactNode;
 }
@@ -74,6 +76,7 @@ export function ModalShell({
   onClose,
   footer,
   headerAside,
+  notice,
   bodyClassName,
   children,
 }: ModalShellProps) {
@@ -120,6 +123,7 @@ export function ModalShell({
             {onClose && <IconButton icon={X} label="닫기" variant="ghost" onClick={onClose} />}
           </div>
         </header>
+        {notice}
         <div className={cx('custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5 short:py-3', bodyClassName)}>{children}</div>
         {footer && <footer className="border-t border-line bg-ink/45 px-6 py-4 short:py-2.5">{footer}</footer>}
       </section>

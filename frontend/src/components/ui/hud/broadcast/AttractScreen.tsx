@@ -5,7 +5,8 @@ import { Bot, Crosshair, GraduationCap, Headset, Play, Trophy } from 'lucide-rea
 import { Difficulty } from '@/types';
 import { DIFFICULTY_NAME, KEYWORDS_1PT, KEYWORDS_2PT, KEYWORDS_MINUS } from '@/constants/labels';
 import { Kbd, Panel, Pill, cx } from '@/components/ui/kit';
-import { MatchResultSummary, slotName, winnerHeadline } from '@/components/ui/matchInfo';
+import { MatchResultSummary, NO_READY, ReadyInfo, slotName, winnerHeadline } from '@/components/ui/matchInfo';
+import { useSecondsLeft } from '../hooks';
 import { Logo } from './Logo';
 
 interface AttractScreenProps {
@@ -14,13 +15,15 @@ interface AttractScreenProps {
   isP2Connected: boolean;
   difficulty: Difficulty;
   recentMatches: MatchResultSummary[];
+  /** 경기 전 준비 상태 (친구 대결은 두 선수가 모두 준비되면 시작) */
+  readyInfo?: ReadyInfo;
 }
 
 /**
  * 관전 모니터 대기 화면 (1920×1080 기준).
  * 뒤에서 AI 시연이 돌아가는 동안 게임 소개 · 하는 방법 · 표적 점수 · 다음 도전자 · 최근 경기를 보여 줌
  */
-export function AttractScreen({ isDemo, isP1Connected, isP2Connected, difficulty, recentMatches }: AttractScreenProps) {
+export function AttractScreen({ isDemo, isP1Connected, isP2Connected, difficulty, recentMatches, readyInfo = NO_READY }: AttractScreenProps) {
   return (
     <div className="absolute inset-0 animate-fade-in motion-reduce:animate-none">
       {/* 글자가 잘 보이도록 왼쪽·아래를 어둡게 */}
@@ -47,7 +50,7 @@ export function AttractScreen({ isDemo, isP1Connected, isP2Connected, difficulty
 
       {/* 오른쪽: 다음 경기 · 표적 점수 · 최근 경기 (최근 경기 3개까지 아래쪽 'AI 시연 중' 표시와 겹치지 않는 높이) */}
       <div className="absolute right-[112px] top-[96px] flex w-[600px] flex-col gap-5">
-        <NextMatchPanel isP1Connected={isP1Connected} isP2Connected={isP2Connected} difficulty={difficulty} />
+        <NextMatchPanel isP1Connected={isP1Connected} isP2Connected={isP2Connected} difficulty={difficulty} readyInfo={readyInfo} />
         <PointsPanel />
         <RecentPanel matches={recentMatches} />
       </div>
@@ -84,16 +87,21 @@ function Step({ n, icon: Icon, title, desc }: { n: string; icon: typeof Headset;
   );
 }
 
-function SlotRow({ slot, connected, aiFill }: { slot: 1 | 2; connected: boolean; aiFill: boolean }) {
+/** 자리 표시: 준비 완료 / 입장(접속, 아직 준비 전) / AI가 대신해요 / 빈 자리 */
+function SlotRow({ slot, connected, ready, aiFill }: { slot: 1 | 2; connected: boolean; ready: boolean; aiFill: boolean }) {
   return (
     <div className="flex items-center gap-4">
       <span className={cx('h-12 w-1.5 rounded-full', slot === 1 ? 'bg-p1 shadow-glow-p1' : 'bg-p2 shadow-glow-p2')} />
       <span className={cx('font-num text-[30px] font-bold', slot === 1 ? 'text-p1' : 'text-p2')}>{slot}P</span>
       <span className="text-[24px] font-semibold text-fg">{slotName(slot, null)}</span>
       <span className="ml-auto">
-        {connected ? (
+        {connected && ready ? (
           <Pill tone="ok" dot pulse size="xl">
             준비 완료
+          </Pill>
+        ) : connected ? (
+          <Pill tone={slot === 1 ? 'p1' : 'p2'} dot size="xl">
+            입장
           </Pill>
         ) : aiFill ? (
           <Pill tone="ai" icon={Bot} size="xl">
@@ -107,21 +115,50 @@ function SlotRow({ slot, connected, aiFill }: { slot: 1 | 2; connected: boolean;
   );
 }
 
-function NextMatchPanel({ isP1Connected, isP2Connected, difficulty }: { isP1Connected: boolean; isP2Connected: boolean; difficulty: Difficulty }) {
+function NextMatchPanel({
+  isP1Connected,
+  isP2Connected,
+  difficulty,
+  readyInfo,
+}: {
+  isP1Connected: boolean;
+  isP2Connected: boolean;
+  difficulty: Difficulty;
+  readyInfo: ReadyInfo;
+}) {
   const both = isP1Connected && isP2Connected;
   const one = isP1Connected !== isP2Connected;
+  const p1Ready = isP1Connected && readyInfo.p1;
+  const p2Ready = isP2Connected && readyInfo.p2;
+  const seconds = useSecondsLeft(readyInfo.deadlineAt);
+  const headline = both
+    ? p1Ready && p2Ready
+      ? '곧 시작!'
+      : p1Ready || p2Ready
+        ? `${p1Ready ? '1P' : '2P'} 준비 완료!`
+        : '1P · 2P 입장!'
+    : one
+      ? '도전자 입장!'
+      : '도전자를 기다리는 중';
+  const footer = both
+    ? readyInfo.deadlineAt > 0 && seconds > 0
+      ? `${seconds}초 뒤 시작해요 · 둘 다 준비하면 바로 시작`
+      : '둘 다 시작을 누르면 경기가 시작돼요'
+    : one
+      ? `빈 자리는 AI 라이벌(${DIFFICULTY_NAME[difficulty]})이 맡아요`
+      : '혼자 와도 AI 라이벌과 대결할 수 있어요';
   return (
     <Panel accent="p1" solid className="px-8 py-6">
       <p className="text-[20px] font-semibold text-p1">다음 경기</p>
       <p className="mt-1 text-[32px] font-bold leading-tight text-fg">
-        {both ? '1P · 2P 준비 완료!' : one ? '도전자 입장!' : '도전자를 기다리는 중'}
+        {headline}
       </p>
       <div className="mt-5 flex flex-col gap-4">
-        <SlotRow slot={1} connected={isP1Connected} aiFill={one && !isP1Connected} />
-        <SlotRow slot={2} connected={isP2Connected} aiFill={one && !isP2Connected} />
+        <SlotRow slot={1} connected={isP1Connected} ready={p1Ready} aiFill={one && !isP1Connected} />
+        <SlotRow slot={2} connected={isP2Connected} ready={p2Ready} aiFill={one && !isP2Connected} />
       </div>
       <p className="mt-4 text-[20px] leading-snug text-fg-2">
-        {one ? `빈 자리는 AI 라이벌(${DIFFICULTY_NAME[difficulty]})이 맡아요` : '혼자 와도 AI 라이벌과 대결할 수 있어요'}
+        {footer}
       </p>
     </Panel>
   );
