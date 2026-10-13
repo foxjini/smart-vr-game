@@ -26,6 +26,7 @@ import {
   DIFFICULTY_NAME,
   KEYWORDS_1PT,
   KEYWORDS_2PT,
+  KEYWORDS_MINUS,
   ROLE_NAME,
   ROLE_SHORT,
   SHAPE_NAME,
@@ -388,6 +389,15 @@ function RulesStep({ difficulty, onSelectDifficulty }: { difficulty: Difficulty;
                 {k}
               </span>
             ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-danger px-2 py-0.5 font-num text-[15px] font-bold text-ink">-1점</span>
+            {KEYWORDS_MINUS.map((k) => (
+              <span key={k} className="rounded-md border border-danger/60 bg-danger/12 px-2.5 py-0.5 text-[17px] font-extrabold text-danger">
+                {k}
+              </span>
+            ))}
+            <span className="text-[13px] font-semibold text-fg-2">맞히면 1점 깎여요</span>
           </div>
         </div>
       </Panel>

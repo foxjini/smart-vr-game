@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { tugShare } from '@/components/ui/matchInfo';
 import { cx } from './cx';
 
 interface TugBarProps {
@@ -12,8 +13,7 @@ interface TugBarProps {
 
 /** 점수 줄다리기 막대 (가운데 = 동점, 앞선 팀 색이 반대쪽으로 밀고 들어감) */
 export function TugBar({ p1Score, p2Score, size = 'sm', className }: TugBarProps) {
-  const total = p1Score + p2Score;
-  const ratio = total > 0 ? p1Score / total : 0.5;
+  const ratio = tugShare(p1Score, p2Score);
   const pct = `${(ratio * 100).toFixed(1)}%`;
   return (
     <div

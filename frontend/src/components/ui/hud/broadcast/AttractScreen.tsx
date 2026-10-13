@@ -3,7 +3,7 @@
 import React from 'react';
 import { Bot, Crosshair, GraduationCap, Headset, Play, Trophy } from 'lucide-react';
 import { Difficulty } from '@/types';
-import { DIFFICULTY_NAME, KEYWORDS_1PT, KEYWORDS_2PT } from '@/constants/labels';
+import { DIFFICULTY_NAME, KEYWORDS_1PT, KEYWORDS_2PT, KEYWORDS_MINUS } from '@/constants/labels';
 import { Kbd, Panel, Pill, cx } from '@/components/ui/kit';
 import { MatchResultSummary, slotName, winnerHeadline } from '@/components/ui/matchInfo';
 import { Logo } from './Logo';
@@ -147,16 +147,25 @@ function PointsPanel() {
           ))}
         </span>
       </div>
+      <div className="mt-3.5 flex items-center gap-4">
+        <span className="w-[76px] shrink-0 rounded-lg bg-danger py-1.5 text-center font-num text-[28px] font-bold text-ink">-1점</span>
+        <span className="flex flex-wrap items-center gap-2.5">
+          {KEYWORDS_MINUS.map((k) => (
+            <Keyword key={k} word={k} minus />
+          ))}
+          <span className="ml-1 text-[22px] font-semibold text-fg-2">맞히면 1점 깎여요</span>
+        </span>
+      </div>
     </Panel>
   );
 }
 
-function Keyword({ word, gold }: { word: string; gold?: boolean }) {
+function Keyword({ word, gold, minus }: { word: string; gold?: boolean; minus?: boolean }) {
   return (
     <span
       className={cx(
         'rounded-lg border px-3.5 py-1 text-[26px] font-extrabold leading-snug',
-        gold ? 'border-gold/70 bg-gold/15 text-gold' : 'border-line-strong bg-ink/60 text-fg'
+        gold ? 'border-gold/70 bg-gold/15 text-gold' : minus ? 'border-danger/70 bg-danger/15 text-danger' : 'border-line-strong bg-ink/60 text-fg'
       )}
     >
       {word}

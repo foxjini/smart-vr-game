@@ -8,6 +8,10 @@ export interface TargetObjectRef {
   basePos: THREE.Vector3;
   velocity?: THREE.Vector3;
   isHit: boolean;
+  /** 표적 점수 (음수면 맞히면 점수가 깎이는 감점 표적) */
+  points?: number;
+  /** 0 이상이면 사라지는 중 (경기 종료, 감점 표적의 시간 끝) */
+  despawn?: number;
 }
 
 export interface AIActionResult {
@@ -26,6 +30,8 @@ const AIM_SPEED: Record<Difficulty, number> = { easy: 2.2, normal: 3.8, hard: 8.
 const ANGLE_THRESHOLD: Record<Difficulty, number> = { easy: 0.18, normal: 0.08, hard: 0.04 };
 /** 난이도별 사격 쿨다운 (하: 2.6s~3.4s, 중: 1.8s~2.4s, 상: 1.1s~1.5s) */
 const SHOT_COOLDOWN: Record<Difficulty, number> = { easy: 2.8, normal: 2.0, hard: 1.25 };
+/** 새 표적을 고를 때 감점 표적(기계·전기)을 가려내지 못하고 함께 후보에 넣을 확률 (하: 30%, 중: 12%, 상: 항상 피함) */
+const MINUS_SLIP: Record<Difficulty, number> = { easy: 0.3, normal: 0.12, hard: 0 };
 
 /** 총구 기본 방향 (-Z) */
 const FORWARD = new THREE.Vector3(0, 0, -1);
@@ -127,9 +133,18 @@ export class CyberAIRival {
     }
 
     // 3. 유효 타겟 검증 및 신규 타겟 탐색
-    if (!this.currentTarget || this.currentTarget.isHit || !activeTargets.includes(this.currentTarget)) {
+    if (
+      !this.currentTarget ||
+      this.currentTarget.isHit ||
+      (this.currentTarget.despawn ?? -1) >= 0 ||
+      !activeTargets.includes(this.currentTarget)
+    ) {
       this.currentTarget = null;
-      const available = activeTargets.filter((t) => !t.isHit);
+      // 감점 표적은 피함 (점수 표적이 없으면 기다림). 쉬움·보통은 표적을 고를 때 가끔 가려내지 못해
+      // 감점 표적도 후보에 넣음 (사람처럼 실수, 고를 때마다 한 번만 정함)
+      const live = activeTargets.filter((t) => !t.isHit && (t.despawn ?? -1) < 0);
+      const scoring = live.filter((t) => (t.points ?? 1) > 0);
+      const available = scoring.length > 0 && Math.random() < MINUS_SLIP[this.difficulty] ? live : scoring;
       if (available.length > 0) {
         if (this.difficulty === 'hard') {
           // 상(Hard): 가장 가까운 표적 선호 및 빠른 반응 (0.28s ~ 0.40s)
@@ -225,12 +240,16 @@ export class CyberAIRival {
     return { fire: false, reload: false };
   }
 
-  /** 실제 3D 레이캐스트가 표적에 명중했을 때 호출 */
+  /** 실제 3D 레이캐스트가 표적에 명중했을 때 호출 (감점 표적은 점수만 깎이고 연속 명중이 끊김) */
   public recordHit(basePoints: number = 1): number {
-    this.stats.hits += 1;
-    this.stats.combo += 1;
-    if (this.stats.combo > this.stats.maxCombo) {
-      this.stats.maxCombo = this.stats.combo;
+    if (basePoints < 0) {
+      this.stats.combo = 0;
+    } else {
+      this.stats.hits += 1;
+      this.stats.combo += 1;
+      if (this.stats.combo > this.stats.maxCombo) {
+        this.stats.maxCombo = this.stats.combo;
+      }
     }
 
     const addedScore = basePoints;

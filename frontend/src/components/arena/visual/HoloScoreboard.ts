@@ -5,6 +5,7 @@ import { asCanvasTexture } from './renderSetup';
 import { GATE } from './arena/structures';
 import { HoloTextFactory } from './text/HoloText';
 import { VR_TEXT } from './text/vrStrings';
+import { tugShare } from '@/components/ui/matchInfo';
 
 /** 점수판 크기(m)와 위치: 게이트 고리 안쪽 위 (표적 구역 뒤라 표적을 가리지 않음) */
 const BOARD_W = 8.4;
@@ -150,9 +151,8 @@ export class HoloScoreboard {
     ctx.beginPath();
     ctx.roundRect(w - 14, 34, 10, h - 68, 5);
     ctx.fill();
-    // 줄다리기: 두 선수 점수 비율만큼 (0:0이면 가운데)
-    const total = p1 + p2;
-    const share = total > 0 ? p1 / total : 0.5;
+    // 줄다리기: 두 선수 점수 비율만큼 (0:0이면 가운데, 감점으로 0보다 작은 점수도 범위 안에)
+    const share = tugShare(p1, p2);
     const barX = 300;
     const barW = w - 600;
     const barY = h - 46;

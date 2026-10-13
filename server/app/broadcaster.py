@@ -12,7 +12,8 @@ VALID_DIFFICULTIES = ("easy", "normal", "hard")
 DEFAULT_MATCH_DURATION = 60
 MIN_MATCH_DURATION = 10
 MAX_MATCH_DURATION = 600
-# 표적 1개의 배점 상한 (현재 게임은 정보/통신 2점, 나머지 1점). 비정상 값 방어용
+# 표적 1개의 배점 범위 (현재 게임은 정보·통신 2점, 제어·회로·인공·전자 1점, 기계·전기 -1점 감점).
+# 이 범위를 벗어나거나 0이면 비정상 값으로 보고 1점으로 처리
 MAX_TARGET_POINTS = 10
 # 한 경기에서 서버가 기억하는 표적 수 상한 (메모리 보호용, 실제 경기는 수십 개 수준)
 MAX_TRACKED_TARGETS = 500
@@ -382,7 +383,7 @@ class ConnectionManager:
         if target_id not in self.target_points and len(self.target_points) >= MAX_TRACKED_TARGETS:
             return
         points = _to_int(data.get("points"))
-        if points is None or not 1 <= points <= MAX_TARGET_POINTS:
+        if points is None or points == 0 or not -MAX_TARGET_POINTS <= points <= MAX_TARGET_POINTS:
             points = 1
         self.target_points[target_id] = points
         data["points"] = points

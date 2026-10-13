@@ -88,7 +88,8 @@ export interface PlayerPose {
   blasterQuat: [number, number, number, number];
 }
 
-export type TargetKeyword = '정보' | '통신' | '제어' | '회로' | '인공' | '전자';
+/** 표적 문구 (정보·통신 2점, 제어·회로·인공·전자 1점, 기계·전기는 맞히면 1점 감점) */
+export type TargetKeyword = '정보' | '통신' | '제어' | '회로' | '인공' | '전자' | '기계' | '전기';
 
 export interface TargetSpawnPacket {
   id: string;

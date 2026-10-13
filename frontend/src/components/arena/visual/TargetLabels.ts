@@ -7,8 +7,8 @@ import { FONT_NUM, FONT_UI } from './fonts';
 type Entry = { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; points: number };
 
 /**
- * 표적 위 키워드 라벨과 명중 점수 팝업("+2 정보")의 캔버스 텍스처.
- * 키워드가 6개뿐이라 키워드마다 한 번만 그려 모든 표적이 함께 씀 (VRAM 누수 없음).
+ * 표적 위 키워드 라벨과 명중 점수 팝업("+2 정보", "-1 기계")의 캔버스 텍스처.
+ * 키워드가 8개뿐이라 키워드마다 한 번만 그려 모든 표적이 함께 씀 (VRAM 누수 없음).
  * 별표·이모지는 Quest 글꼴에 없을 수 있어 쓰지 않음
  */
 export class TargetLabels {
@@ -89,48 +89,55 @@ export class TargetLabels {
   }
 }
 
-/** 표적 라벨: 2점은 금색 테두리·글자, 1점은 중립색 (팀 색과 겹치지 않게) */
+/** 점수 글자: "2점", "1점", "-1점" */
+function pointsText(points: number): string {
+  return `${points}점`;
+}
+
+/** 표적 라벨: 2점은 금색 테두리·글자, 1점은 중립색 (팀 색과 겹치지 않게), 감점은 빨간 띠·테두리 */
 function drawLabel(canvas: HTMLCanvasElement, keyword: TargetKeyword, points: number) {
   const ctx = canvas.getContext('2d')!;
   const bonus = points === 2;
+  const minus = points < 0;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = bonus ? 'rgba(30, 22, 2, 0.9)' : 'rgba(10, 16, 30, 0.86)';
+  ctx.fillStyle = bonus ? 'rgba(30, 22, 2, 0.9)' : minus ? 'rgba(40, 6, 10, 0.9)' : 'rgba(10, 16, 30, 0.86)';
   ctx.beginPath();
   ctx.roundRect(8, 8, 240, 112, 20);
   ctx.fill();
-  ctx.lineWidth = bonus ? 6 : 3;
-  ctx.strokeStyle = bonus ? cssColor(PALETTE.gold) : cssRgba(PALETTE.fg2, 0.7);
+  ctx.lineWidth = bonus || minus ? 6 : 3;
+  ctx.strokeStyle = bonus ? cssColor(PALETTE.gold) : minus ? cssColor(PALETTE.danger) : cssRgba(PALETTE.fg2, 0.7);
   ctx.stroke();
 
   // 위쪽 점수 띠
-  ctx.fillStyle = bonus ? cssColor(PALETTE.gold) : cssRgba(PALETTE.fg2, 0.22);
+  ctx.fillStyle = bonus ? cssColor(PALETTE.gold) : minus ? cssColor(PALETTE.danger) : cssRgba(PALETTE.fg2, 0.22);
   ctx.beginPath();
   ctx.roundRect(78, 14, 100, 30, 15);
   ctx.fill();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = bonus ? cssColor(PALETTE.ink) : cssColor(PALETTE.fg);
+  ctx.fillStyle = bonus || minus ? cssColor(PALETTE.ink) : cssColor(PALETTE.fg);
   ctx.font = `800 21px ${FONT_UI}`;
-  ctx.fillText(bonus ? '2점' : '1점', 128, 30);
+  ctx.fillText(pointsText(points), 128, 30);
 
   ctx.fillStyle = bonus ? cssColor(PALETTE.gold) : '#ffffff';
   ctx.font = `900 58px ${FONT_UI}`;
   ctx.fillText(keyword, 128, 84);
 }
 
-/** 명중 팝업: "+2 정보" (2점 금색, 1점 흰색), 어두운 그림자로 밝은 배경에서도 보이게 */
+/** 명중 팝업: "+2 정보" (2점 금색, 1점 흰색), "-1 기계" (빨강), 어두운 그림자로 밝은 배경에서도 보이게 */
 function drawPopup(canvas: HTMLCanvasElement, keyword: TargetKeyword, points: number) {
   const ctx = canvas.getContext('2d')!;
   const bonus = points === 2;
+  const minus = points < 0;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.textBaseline = 'middle';
   ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
   ctx.shadowBlur = 10;
 
-  const main = bonus ? cssColor(PALETTE.gold) : '#ffffff';
+  const main = bonus ? cssColor(PALETTE.gold) : minus ? cssColor(PALETTE.danger) : '#ffffff';
   ctx.font = `700 76px ${FONT_NUM}`;
-  const plus = `+${points}`;
+  const plus = minus ? `${points}` : `+${points}`;
   const plusWidth = ctx.measureText(plus).width;
   ctx.font = `900 44px ${FONT_UI}`;
   const wordWidth = ctx.measureText(keyword).width;
@@ -141,7 +148,7 @@ function drawPopup(canvas: HTMLCanvasElement, keyword: TargetKeyword, points: nu
   ctx.fillStyle = main;
   ctx.font = `700 76px ${FONT_NUM}`;
   ctx.fillText(plus, start, 66);
-  ctx.fillStyle = bonus ? cssColor(PALETTE.gold) : cssColor(PALETTE.fg);
+  ctx.fillStyle = bonus ? cssColor(PALETTE.gold) : minus ? cssColor(PALETTE.danger) : cssColor(PALETTE.fg);
   ctx.font = `900 44px ${FONT_UI}`;
   ctx.fillText(keyword, start + plusWidth + gap, 70);
 }

@@ -42,11 +42,12 @@ import { VR_TEXT } from './visual/text/vrStrings';
 import { HoloScoreboard } from './visual/HoloScoreboard';
 import { ResultPanel, ResultPlayer } from './visual/ResultPanel';
 import { aiSlotOf, formatClock, normalizeWinner, slotName, winnerHeadline } from '@/components/ui/matchInfo';
+import { KEYWORDS_1PT, KEYWORDS_2PT, KEYWORDS_MINUS, keywordPoints } from '@/constants/labels';
 
-export const TARGET_KEYWORDS: TargetKeyword[] = ['정보', '통신', '제어', '회로', '인공', '전자'];
-
-/** 키워드 배점: 정보·통신 2점, 나머지 1점 */
-const keywordPoints = (keyword: TargetKeyword): number => (keyword === '정보' || keyword === '통신' ? 2 : 1);
+/** 표적 문구 8가지 (배점은 constants/labels의 keywordPoints: 2점·1점, 기계·전기는 -1점) */
+export const TARGET_KEYWORDS: TargetKeyword[] = [...KEYWORDS_2PT, ...KEYWORDS_1PT, ...KEYWORDS_MINUS];
+/** 점수를 주는 표적 문구 (감점 표적이 최대 수만큼 있을 때 이 중에서 고름) */
+const SCORING_KEYWORDS: TargetKeyword[] = [...KEYWORDS_2PT, ...KEYWORDS_1PT];
 
 /** 경기 시간(초) */
 const MATCH_DURATION = 60;
@@ -69,6 +70,14 @@ const MUZZLE_LOCAL = new THREE.Vector3(0, 0.02, -0.5);
 /** 표적 등장 연출 시간(초) / 경기 종료 후 남은 표적이 사라지는 시간(초) */
 const TARGET_SPAWN_TIME = 0.35;
 const TARGET_DESPAWN_TIME = 0.4;
+/**
+ * 감점 표적(기계·전기)이 스스로 사라지기까지의 시간(초).
+ * 표적은 맞히기 전까지 남아 있는데, 감점 표적은 아무도 쏘지 않으므로 계속 쌓이지 않게 함.
+ * 경기 시계로 재므로 화면이 느린 기기(관전 PC 등)에서도 모든 화면에서 같은 때에 사라짐
+ */
+const MINUS_TARGET_LIFETIME = 8;
+/** 경기장에 함께 있을 수 있는 감점 표적 수 (최대 표적 수 4·6·8개 중 점수 표적이 나올 자리를 남김) */
+const MINUS_TARGET_MAX: Record<Difficulty, number> = { easy: 1, normal: 2, hard: 3 };
 /** 빗나간 사격의 빔 길이(m) */
 const MISS_BEAM_LENGTH = 55;
 /** 재장전 시간(초) */
@@ -81,7 +90,7 @@ export interface TargetObject extends TargetObjectRef {
   mesh: THREE.Group;
   shape: TargetShape;
   keyword: TargetKeyword;
-  points: number; // 정보/통신: 2점, 나머지: 1점
+  points: number; // 정보·통신 2점, 제어·회로·인공·전자 1점, 기계·전기 -1점
   basePos: THREE.Vector3;
   velocity: THREE.Vector3;
   frequency: number;
@@ -105,6 +114,8 @@ export interface TargetObject extends TargetObjectRef {
   spawnAge: number;
   /** 경기가 끝나 사라지는 중이면 0→1, 아니면 -1 */
   despawn: number;
+  /** 감점 표적이 사라질 때의 남은 경기 시간(초), 점수 표적은 null */
+  expireAt: number | null;
 }
 
 /** PC 조준점 화면 위치 (CSS 픽셀, 화면 왼쪽 위 기준) */
@@ -530,7 +541,7 @@ export class ShootingArenaEngine {
       if (targetObj && !targetObj.isHit) {
         targetObj.isHit = true;
         this.showHit(targetObj, new THREE.Vector3(...data.hitPoint), teamColor(slot));
-        this.soundManager.playHit();
+        this.playHitSound(data.addedScore);
       }
 
       // 내 사격과 내가 돌리는 AI는 로컬 콤보를 이어가고, 원격 선수는 서버가 전달한 콤보를 사용
@@ -1051,6 +1062,7 @@ export class ShootingArenaEngine {
       banks: parts.banks,
       spawnAge: 0,
       despawn: -1,
+      expireAt: spec.points < 0 ? this.roundTimer - MINUS_TARGET_LIFETIME : null,
     };
     this.targetsGroup.add(parts.root);
     this.activeTargets.push(target);
@@ -1061,8 +1073,10 @@ export class ShootingArenaEngine {
   private spawnTarget() {
     const id = 't_' + Math.random().toString(36).substring(2, 9);
 
-    // 6가지 문구 랜덤 배정 ('정보', '통신', '제어', '회로', '인공', '전자')
-    const keyword = TARGET_KEYWORDS[Math.floor(Math.random() * TARGET_KEYWORDS.length)];
+    // 8가지 문구 중 하나를 고름. 감점 표적이 이미 최대 수만큼 있으면 점수 표적 중에서만 고름
+    const minusOnField = this.activeTargets.filter((t) => t.points < 0 && !t.isHit && t.despawn < 0).length;
+    const pool = minusOnField < MINUS_TARGET_MAX[this.currentDifficulty] ? TARGET_KEYWORDS : SCORING_KEYWORDS;
+    const keyword = pool[Math.floor(Math.random() * pool.length)];
     const points = keywordPoints(keyword);
 
     const cfg = this.difficultyConfigs[this.currentDifficulty];
@@ -1176,9 +1190,9 @@ export class ShootingArenaEngine {
     if (hit) {
       // 폭발·효과음은 바로 보여주고, 점수와 명중 기록은 서버 확정(서버 경기) 또는 즉시(로컬 경기) 반영
       hit.target.isHit = true;
-      this.soundManager.playHit();
+      this.playHitSound(hit.target.points);
       this.showHit(hit.target, hit.point, playerColor);
-      this.vibrate(hit.target.points === 2 ? 'hitBonus' : 'hit');
+      this.vibrate(hit.target.points < 0 ? 'minus' : hit.target.points === 2 ? 'hitBonus' : 'hit');
       this.applyHitResult(slot, hit.target, hit.point);
     } else {
       this.vibrate('fire');
@@ -1253,13 +1267,20 @@ export class ShootingArenaEngine {
     this.effects.beam(this._muzzle, this._beamEnd, color);
   }
 
-  /** 명중 효과: 폭발(2점은 금색) + 점수 팝업 */
+  /** 명중 효과: 폭발(2점은 금색, 감점은 빨강) + 점수 팝업 */
   private showHit(target: TargetObject, point: THREE.Vector3, color: number) {
     const s = this.difficultyConfigs[this.currentDifficulty].scale;
     this.effects.burst(point, color, target.points, s);
     this.effects.popup(point, target.keyword, target.points, this.camera);
-    // 명중 지점 아래 바닥에 물결 (2점은 금색으로 더 진하게)
-    this.arena.ripple(point, target.points === 2 ? PALETTE.gold : color, target.points === 2 ? 1 : 0.75);
+    // 명중 지점 아래 바닥에 물결 (2점은 금색으로 더 진하게, 감점은 빨강)
+    const rippleColor = target.points === 2 ? PALETTE.gold : target.points < 0 ? PALETTE.danger : color;
+    this.arena.ripple(point, rippleColor, target.points === 2 ? 1 : 0.75);
+  }
+
+  /** 명중음 (감점 표적은 낮은 경고음) */
+  private playHitSound(points: number) {
+    if (points < 0) this.soundManager.playMinus();
+    else this.soundManager.playHit();
   }
 
   /** 총을 든 손 컨트롤러 진동 (VR 중일 때만) */
@@ -1396,13 +1417,20 @@ export class ShootingArenaEngine {
     this.updateAccuracy(s);
   }
 
-  /** 명중 기록 (combo를 주면 그 값을 사용: 원격 선수는 서버가 전달한 콤보) */
+  /**
+   * 명중 기록 (combo를 주면 그 값을 사용: 원격 선수는 서버가 전달한 콤보).
+   * 감점 표적은 점수를 깎고 연속 명중을 끊으며, 명중 수에 넣지 않음 (그만큼 명중률도 내려감)
+   */
   private recordHit(slot: PlayerSlot, points: number, combo?: number) {
     const s = this.statsFor(slot);
-    s.hits += 1;
-    s.combo = combo ?? s.combo + 1;
-    s.maxCombo = Math.max(s.maxCombo, s.combo);
     s.score += points;
+    if (points < 0) {
+      s.combo = 0;
+    } else {
+      s.hits += 1;
+      s.combo = combo ?? s.combo + 1;
+      s.maxCombo = Math.max(s.maxCombo, s.combo);
+    }
     this.updateAccuracy(s);
   }
 
@@ -1613,13 +1641,8 @@ export class ShootingArenaEngine {
     this.matchClockEndsAt = null;
     this.vrExitHoldTimer = 0;
     // 남은 표적은 0.4초 동안 사라짐 (결과 화면에서 경기장이 깔끔하게)
-    const scale = this.difficultyConfigs[this.currentDifficulty].scale;
     for (const t of this.activeTargets) {
-      if (!t.isHit && t.despawn < 0) {
-        t.despawn = 0;
-        t.labelSprite.visible = false;
-        this.effects.poof(t.mesh.position, targetGlowColor(t.points), scale);
-      }
+      if (!t.isHit && t.despawn < 0) this.beginDespawn(t);
     }
     this.updateVRPrompt(true, winner);
     if (this.vrPromptMesh) {
@@ -1657,6 +1680,13 @@ export class ShootingArenaEngine {
     }
   }
 
+  /** 표적이 0.4초 동안 작아지며 사라지기 시작 (맞힌 것으로 치지 않음, 사격 판정에서도 빠짐) */
+  private beginDespawn(t: TargetObject) {
+    t.despawn = 0;
+    t.labelSprite.visible = false;
+    this.effects.poof(t.mesh.position, targetGlowColor(t.points), this.difficultyConfigs[this.currentDifficulty].scale);
+  }
+
   /** AI 라이벌: 조준·사격하고 실제 레이캐스트로 명중 판정 (AI가 맡은 슬롯의 기록으로 집계) */
   private updateAIRival(delta: number) {
     const aiSlot = this.aiSlot;
@@ -1687,7 +1717,7 @@ export class ShootingArenaEngine {
     if (hit) {
       hit.target.isHit = true;
       this.showHit(hit.target, hit.point, aiColor);
-      this.soundManager.playHit();
+      this.playHitSound(hit.target.points);
       this.cyberAI.recordHit(hit.target.points);
       this.applyHitResult(aiSlot, hit.target, hit.point);
     } else {
@@ -1934,7 +1964,7 @@ export class ShootingArenaEngine {
       }
 
       if (t.despawn >= 0) {
-        // 경기가 끝나 사라지는 중 (맞힌 것으로 치지 않음)
+        // 경기가 끝났거나 감점 표적의 시간이 다 되어 사라지는 중 (맞힌 것으로 치지 않음)
         t.despawn += delta / TARGET_DESPAWN_TIME;
         const k = Math.max(0, 1 - t.despawn);
         t.visual.scale.setScalar(Math.max(0.001, k * k));
@@ -1949,6 +1979,10 @@ export class ShootingArenaEngine {
       if (targetDt > 0) {
         // 이동·회전 계산은 예전과 같음 (모든 화면에서 같은 위치)
         t.timeAlive += targetDt;
+        if (t.expireAt !== null && this.roundTimer <= t.expireAt) {
+          this.beginDespawn(t);
+          continue;
+        }
         t.mesh.position.x = t.basePos.x + Math.sin(t.timeAlive * t.frequency) * t.amplitude;
         t.mesh.position.y = t.basePos.y + Math.cos(t.timeAlive * (t.frequency * 0.8)) * 0.4;
         if (Math.abs(t.basePos.x) > 9) {

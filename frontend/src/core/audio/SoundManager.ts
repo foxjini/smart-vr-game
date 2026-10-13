@@ -228,6 +228,36 @@ export class SoundManager {
   }
 
   // ==========================================
+  // 2-1. 감점 표적 명중음 (기계·전기): 명중음과 반대로 낮게 내려가는 '삐-빅' 경고음
+  // ==========================================
+  public playMinus() {
+    if (this.isMuted || this.suppressed) return;
+    this.initContext();
+    if (!this.ctx || !this.masterGain) return;
+
+    const now = this.ctx.currentTime;
+    const type: OscillatorType = this.currentPreset === 'retro' ? 'square' : 'sawtooth';
+    // 두 음을 이어서: 330Hz → 196Hz (한 음마다 아래로 살짝 미끄러짐)
+    [
+      [0, 330],
+      [0.11, 196],
+    ].forEach(([at, freq]) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now + at);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.85, now + at + 0.1);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.setValueAtTime(0.16, now + at);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + at + 0.1);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(now + at);
+      osc.stop(now + at + 0.1);
+    });
+  }
+
+  // ==========================================
   // 3. 탄약 소진 (Empty Sound)
   // ==========================================
   public playEmpty() {

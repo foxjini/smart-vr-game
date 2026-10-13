@@ -2,7 +2,7 @@
  * Quest 컨트롤러 진동.
  * 총을 든 손의 컨트롤러에서만 울리고, VR 중이 아니면 아무것도 하지 않음 (엔진이 판단).
  */
-export type HapticPattern = 'fire' | 'hit' | 'hitBonus' | 'empty' | 'reloadDone' | 'warning' | 'victory';
+export type HapticPattern = 'fire' | 'hit' | 'hitBonus' | 'minus' | 'empty' | 'reloadDone' | 'warning' | 'victory';
 
 /** [시작 지연 ms, 세기 0~1, 길이 ms] */
 const PATTERNS: Record<HapticPattern, Array<[number, number, number]>> = {
@@ -12,6 +12,8 @@ const PATTERNS: Record<HapticPattern, Array<[number, number, number]>> = {
     [0, 0.85, 70],
     [110, 0.55, 45],
   ],
+  /** 감점 표적 명중: 약하고 긴 떨림 (명중의 짧고 강한 진동과 다르게) */
+  minus: [[0, 0.3, 140]],
   empty: [[0, 0.12, 16]],
   reloadDone: [
     [0, 0.35, 30],

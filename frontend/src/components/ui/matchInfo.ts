@@ -50,6 +50,17 @@ export function localSlotOf(role: ClientRole): Slot | null {
   return role === 'P1' ? 1 : role === 'P2' ? 2 : null;
 }
 
+/**
+ * 점수 줄다리기에서 1P 쪽 비율 (0~1, 동점이면 0.5). 2D 막대(TugBar)와 VR 점수판이 함께 씀.
+ * 감점 표적으로 점수가 0보다 작아질 수 있어, 낮은 쪽 점수가 0이 되도록 함께 올려서 셈 (막대가 범위를 벗어나지 않게)
+ */
+export function tugShare(p1Score: number, p2Score: number): number {
+  const floor = Math.min(0, p1Score, p2Score);
+  const a = p1Score - floor;
+  const b = p2Score - floor;
+  return a + b > 0 ? a / (a + b) : 0.5;
+}
+
 export function normalizeWinner(winner: string | undefined, p1Score: number, p2Score: number): Winner {
   if (winner === 'P1' || winner === 'P2' || winner === 'DRAW') return winner;
   return p1Score > p2Score ? 'P1' : p2Score > p1Score ? 'P2' : 'DRAW';

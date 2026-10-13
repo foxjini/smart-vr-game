@@ -1,4 +1,4 @@
-import { ClientRole, Difficulty, SpectatorCameraMode, TargetShape, ThemeType } from '@/types';
+import { ClientRole, Difficulty, SpectatorCameraMode, TargetKeyword, TargetShape, ThemeType } from '@/types';
 
 /**
  * 화면 전체에서 같은 이름을 쓰기 위한 명칭표.
@@ -62,9 +62,23 @@ export const CAMERA_NAME: Record<SpectatorCameraMode, string> = {
   ORBIT: '궤도 회전',
 };
 
-/** 표적 문구별 점수 (엔진 TARGET_KEYWORDS와 같은 규칙: 정보·통신 2점, 나머지 1점) */
+/**
+ * 표적 문구별 점수 (엔진이 표적을 만들 때도 이 표를 씀).
+ * 정보·통신 2점, 제어·회로·인공·전자 1점.
+ * 기계·전기는 맞히면 1점이 깎이는 감점 표적
+ */
 export const KEYWORDS_2PT = ['정보', '통신'] as const;
 export const KEYWORDS_1PT = ['제어', '회로', '인공', '전자'] as const;
+export const KEYWORDS_MINUS = ['기계', '전기'] as const;
+/** 감점 표적의 점수 */
+export const MINUS_POINTS = -1;
+
+/** 표적 문구의 점수 */
+export function keywordPoints(keyword: TargetKeyword): number {
+  if ((KEYWORDS_2PT as readonly string[]).includes(keyword)) return 2;
+  if ((KEYWORDS_MINUS as readonly string[]).includes(keyword)) return MINUS_POINTS;
+  return 1;
+}
 
 /** 경기 시간 (초) */
 export const MATCH_SECONDS = 60;

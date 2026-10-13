@@ -15,7 +15,7 @@ interface AimReticleProps {
 /**
  * PC 조준점: 화면 가운데가 아니라 총이 실제로 겨누는 곳(처음 닿는 표적 또는 먼 지점)을 따라감.
  * 위치는 매 프레임 DOM에 직접 써서 React 다시 그리기를 하지 않음.
- * 표적 위에 있으면 고리가 좁아지며 팀 색(2점 표적은 금색)으로 바뀜
+ * 표적 위에 있으면 고리가 좁아지며 팀 색(2점 표적은 금색, 감점 표적은 빨강)으로 바뀜
  */
 export function AimReticle({ engineRef, hits, slot, dimmed }: AimReticleProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -37,7 +37,7 @@ export function AimReticle({ engineRef, hits, slot, dimmed }: AimReticleProps) {
       }
       if (!visible) return;
       el.style.transform = `translate3d(${out.x.toFixed(1)}px, ${out.y.toFixed(1)}px, 0)`;
-      const state = out.locked ? (out.points >= 2 ? 'gold' : 'lock') : 'free';
+      const state = out.locked ? (out.points >= 2 ? 'gold' : out.points < 0 ? 'minus' : 'lock') : 'free';
       if (state !== lastState) {
         el.dataset.state = state;
         lastState = state;
@@ -67,6 +67,7 @@ export function AimReticle({ engineRef, hits, slot, dimmed }: AimReticleProps) {
           'absolute inset-0 size-full text-white/90 transition-[transform,color] duration-150 ease-snap',
           'group-data-[state=lock]:rotate-45 group-data-[state=lock]:scale-[0.72]',
           'group-data-[state=gold]:rotate-45 group-data-[state=gold]:scale-[0.72] group-data-[state=gold]:text-gold',
+          'group-data-[state=minus]:rotate-45 group-data-[state=minus]:scale-[0.72] group-data-[state=minus]:text-danger',
           slot === 1 ? 'group-data-[state=lock]:text-p1' : 'group-data-[state=lock]:text-p2'
         )}
         fill="none"

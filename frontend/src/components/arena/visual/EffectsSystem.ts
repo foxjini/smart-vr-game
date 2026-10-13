@@ -224,22 +224,25 @@ export class EffectsSystem {
 
   // ───────────────────────── 공개 효과 ─────────────────────────
 
-  /** 표적 명중 폭발 (섬광 + 충격파 고리 + 불꽃 + 파편) */
+  /** 표적 명중 폭발 (섬광 + 충격파 고리 + 불꽃 + 파편). 감점 표적은 빨갛고 작게 */
   burst(point: THREE.Vector3, color: number, points: number, scale = 1) {
     const bonus = points === 2;
-    const accent = bonus ? PALETTE.gold : color;
+    const minus = points < 0;
+    const accent = bonus ? PALETTE.gold : minus ? PALETTE.danger : color;
     this.spawnGlow(point, 0, 0, 0, 0.14, 1.5 * scale * (bonus ? 1.3 : 1), 0.6 * scale, accent, 1, SHAPE_FLASH, 0, 0);
-    this.spawnGlow(point, 0, 0, 0, 0.38, 0.4 * scale, (bonus ? 3.6 : 2.8) * scale, accent, 0.95, SHAPE_RING, 0, 0);
-    const sparks = bonus ? 30 : 18;
+    this.spawnGlow(point, 0, 0, 0, 0.38, 0.4 * scale, (bonus ? 3.6 : minus ? 2.2 : 2.8) * scale, accent, 0.95, SHAPE_RING, 0, 0);
+    const sparks = bonus ? 30 : minus ? 12 : 18;
+    // 감점은 팀 색 대신 빨강 불꽃 (쏜 사람은 빔 색으로 구분)
+    const base = minus ? PALETTE.danger : color;
     for (let i = 0; i < sparks; i++) {
       const dir = randomDir();
       const speed = 4 + Math.random() * 6;
       const pick = Math.random();
-      const c = pick < 0.5 ? color : pick < 0.8 ? 0xffffff : bonus ? PALETTE.gold : color;
+      const c = pick < 0.5 ? base : pick < 0.8 ? 0xffffff : bonus ? PALETTE.gold : base;
       const size = 0.07 + Math.random() * 0.1;
       this.spawnGlow(point, dir.x * speed, dir.y * speed + 1.2, dir.z * speed, 0.35 + Math.random() * 0.4, size, size * 0.3, c, 1, SHAPE_DOT, 6, 1.6);
     }
-    const chunks = bonus ? 14 : 10;
+    const chunks = bonus ? 14 : minus ? 8 : 10;
     for (let i = 0; i < chunks; i++) this.spawnDebris(point, scale);
   }
 
@@ -280,7 +283,7 @@ export class EffectsSystem {
     b.mesh.visible = true;
   }
 
-  /** 점수 팝업 "+2 정보" (보는 사람 쪽으로 조금 당겨 표적에 가려지지 않게) */
+  /** 점수 팝업 "+2 정보", "-1 기계" (보는 사람 쪽으로 조금 당겨 표적에 가려지지 않게) */
   popup(point: THREE.Vector3, keyword: TargetKeyword, points: number, camera: THREE.Camera) {
     const p = this.popups.find((x) => x.life <= 0) ?? this.popups.reduce((a, b) => (a.life < b.life ? a : b));
     camera.getWorldPosition(_camPos);
