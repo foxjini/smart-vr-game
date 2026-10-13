@@ -45,8 +45,8 @@ export function AttractScreen({ isDemo, isP1Connected, isP2Connected, difficulty
         </ol>
       </div>
 
-      {/* 오른쪽: 다음 경기 · 표적 점수 · 최근 경기 */}
-      <div className="absolute right-[112px] top-[96px] flex w-[600px] flex-col gap-6">
+      {/* 오른쪽: 다음 경기 · 표적 점수 · 최근 경기 (최근 경기 3개까지 아래쪽 'AI 시연 중' 표시와 겹치지 않는 높이) */}
+      <div className="absolute right-[112px] top-[96px] flex w-[600px] flex-col gap-5">
         <NextMatchPanel isP1Connected={isP1Connected} isP2Connected={isP2Connected} difficulty={difficulty} />
         <PointsPanel />
         <RecentPanel matches={recentMatches} />
@@ -111,16 +111,16 @@ function NextMatchPanel({ isP1Connected, isP2Connected, difficulty }: { isP1Conn
   const both = isP1Connected && isP2Connected;
   const one = isP1Connected !== isP2Connected;
   return (
-    <Panel accent="p1" solid className="px-8 py-7">
+    <Panel accent="p1" solid className="px-8 py-6">
       <p className="text-[20px] font-semibold text-p1">다음 경기</p>
       <p className="mt-1 text-[32px] font-bold leading-tight text-fg">
         {both ? '1P · 2P 준비 완료!' : one ? '도전자 입장!' : '도전자를 기다리는 중'}
       </p>
-      <div className="mt-6 flex flex-col gap-4">
+      <div className="mt-5 flex flex-col gap-4">
         <SlotRow slot={1} connected={isP1Connected} aiFill={one && !isP1Connected} />
         <SlotRow slot={2} connected={isP2Connected} aiFill={one && !isP2Connected} />
       </div>
-      <p className="mt-5 text-[20px] leading-snug text-fg-2">
+      <p className="mt-4 text-[20px] leading-snug text-fg-2">
         {one ? `빈 자리는 AI 라이벌(${DIFFICULTY_NAME[difficulty]})이 맡아요` : '혼자 와도 AI 라이벌과 대결할 수 있어요'}
       </p>
     </Panel>
@@ -129,26 +129,26 @@ function NextMatchPanel({ isP1Connected, isP2Connected, difficulty }: { isP1Conn
 
 function PointsPanel() {
   return (
-    <Panel accent="gold" solid className="px-8 py-7">
+    <Panel accent="gold" solid className="px-8 py-6">
       <p className="text-[20px] font-semibold text-gold">표적 점수</p>
-      <div className="mt-4 flex items-center gap-4">
-        <span className="w-[76px] shrink-0 rounded-lg bg-gold py-1.5 text-center font-num text-[28px] font-bold text-ink">2점</span>
+      <div className="mt-3 flex items-center gap-4">
+        <span className="w-[76px] shrink-0 rounded-lg bg-gold py-1 text-center font-num text-[28px] font-bold text-ink">2점</span>
         <span className="flex flex-wrap gap-2.5">
           {KEYWORDS_2PT.map((k) => (
             <Keyword key={k} word={k} gold />
           ))}
         </span>
       </div>
-      <div className="mt-3.5 flex items-center gap-4">
-        <span className="w-[76px] shrink-0 rounded-lg bg-raised py-1.5 text-center font-num text-[28px] font-bold text-fg">1점</span>
+      <div className="mt-2.5 flex items-center gap-4">
+        <span className="w-[76px] shrink-0 rounded-lg bg-raised py-1 text-center font-num text-[28px] font-bold text-fg">1점</span>
         <span className="flex flex-wrap gap-2.5">
           {KEYWORDS_1PT.map((k) => (
             <Keyword key={k} word={k} />
           ))}
         </span>
       </div>
-      <div className="mt-3.5 flex items-center gap-4">
-        <span className="w-[76px] shrink-0 rounded-lg bg-danger py-1.5 text-center font-num text-[28px] font-bold text-ink">-1점</span>
+      <div className="mt-2.5 flex items-center gap-4">
+        <span className="w-[76px] shrink-0 rounded-lg bg-danger py-1 text-center font-num text-[28px] font-bold text-ink">-1점</span>
         <span className="flex flex-wrap items-center gap-2.5">
           {KEYWORDS_MINUS.map((k) => (
             <Keyword key={k} word={k} minus />
@@ -164,7 +164,7 @@ function Keyword({ word, gold, minus }: { word: string; gold?: boolean; minus?: 
   return (
     <span
       className={cx(
-        'rounded-lg border px-3.5 py-1 text-[26px] font-extrabold leading-snug',
+        'rounded-lg border px-3.5 py-0.5 text-[26px] font-extrabold leading-snug',
         gold ? 'border-gold/70 bg-gold/15 text-gold' : minus ? 'border-danger/70 bg-danger/15 text-danger' : 'border-line-strong bg-ink/60 text-fg'
       )}
     >
@@ -176,12 +176,12 @@ function Keyword({ word, gold, minus }: { word: string; gold?: boolean; minus?: 
 function RecentPanel({ matches }: { matches: MatchResultSummary[] }) {
   const list = matches.slice(0, 3);
   return (
-    <Panel solid className="px-8 py-7">
+    <Panel solid className="px-8 py-6">
       <p className="text-[20px] font-semibold text-fg-2">최근 경기</p>
       {list.length === 0 ? (
         <p className="mt-3 text-[22px] text-fg-3">오늘의 첫 경기를 기다리고 있어요</p>
       ) : (
-        <ul className="mt-4 flex flex-col gap-3">
+        <ul className="mt-3 flex flex-col gap-2">
           {list.map((m) => {
             const time = new Date(m.endedAt);
             const hhmm = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
