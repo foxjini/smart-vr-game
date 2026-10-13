@@ -960,7 +960,7 @@
             </div>
             <pre><code>http://<span class="dynamic-ip">192.168.1.150</span>:3000</code></pre>
           </div>
-          <span style="font-size:0.85rem; color:var(--yellow)">✓ [VR 배틀 시작] 누르면 VR에서 바로 경기 시작!</span>
+          <span style="font-size:0.85rem; color:var(--yellow)">✓ [VR 배틀 시작]을 누르면 VR에 들어가 준비 완료 (친구 대결은 둘 다 준비하면 시작, 혼자면 바로 AI 대결)</span>
         </div>
       </div>
     </section>
@@ -1285,7 +1285,7 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
               <td><span class="key-badge">A</span> <span class="key-badge">B</span> <span class="key-badge">X</span> <span class="key-badge">Y</span> 버튼<br>(경기 중에는 1초 넘게 길게 → 경기 중단 후 나감, 경기 밖에서는 한 번 또는 그립)</td>
               <td>-</td>
               <td>-</td>
-              <td><span class="key-badge">ESC</span> / <span class="key-badge">경기 중단</span></td>
+              <td><span class="key-badge">ESC</span> / <span class="key-badge">경기 중단</span><br>(설정·순위표 창이 열려 있으면 ESC는 창만 닫음)</td>
             </tr>
             <tr>
               <td><b>일시정지</b></td>
@@ -1438,6 +1438,8 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
           <li><b>대기 화면:</b> 경기가 없을 때 AI 사격 시연(사격·명중 효과음만 작게, 음성 안내 없음)을 배경으로 게임 소개, 하는 방법, 표적 점수(정보 · 통신 2점, 제어 · 회로 · 인공 · 전자 1점, 기계 · 전기 -1점), 다음 도전자, 최근 경기를 보여 줍니다.</li>
           <li><b>실시간 중계 (LIVE):</b> 경기가 시작되면 자동으로 바뀝니다. 위쪽 가운데 점수판(점수 · 남은 시간 · 줄다리기, 10초 이하 경고), 아래쪽 두 선수 카드(명중 · 명중률 · 연속 명중), 카메라 이름이 보입니다. 선수의 움직임과 AI 라이벌의 조준 · 사격 · 점수까지 실시간으로 중계됩니다.</li>
           <li><b>경기 결과 (FINAL):</b> 승자와 두 선수 기록 비교를 20초 동안 보여 준 뒤 대기 화면으로 돌아갑니다.</li>
+          <li><b>운영 버튼:</b> 마우스를 움직이면 오른쪽 위에 나타납니다. 경기 중에는 [일시정지] · [경기 중단], 언제나 [소리] · [순위표] · [설정] · [매뉴얼]이 있습니다. <b>관전 화면에는 [경기 시작]이 없습니다.</b> 경기는 선수가 준비해야 시작하고(친구 대결은 둘 다 준비하면 시작), 관전 PC는 보기 · 일시정지 · 중단만 합니다.</li>
+          <li><b>관전 화면의 설정 창:</b> 경기 설정(모든 화면 공통) · 소리 · 이 기기(역할 · 서버 주소)만 있습니다. 경기 중에 설정 창을 열었다가 <span class="key-badge">ESC</span>로 닫아도 경기는 계속됩니다.</li>
         </ul>
       </div>
     </section>
@@ -1447,16 +1449,17 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
     <!-- ================================================================= -->
     <section id="customization">
       <h2 class="section-title"><span class="icon">⚙️</span> 7. 사격장 맞춤 설정, 사운드, 음성 및 Top 10 순위표</h2>
-      <p class="section-desc">화면 오른쪽 위 톱니 모양 <b>[환경설정]</b> 버튼을 눌러 경기 환경과 소리를 바꿀 수 있습니다.</p>
+      <p class="section-desc">화면 오른쪽 위 톱니 모양 <b>[환경설정]</b> 버튼을 눌러 경기 환경과 소리를 바꿀 수 있습니다. <b>경기 설정(테마 · 표적 모양 · 난이도)은 모든 화면 공통</b>이고, 소리 설정은 기기마다 따로입니다.</p>
 
       <div class="grid-3">
         <div class="card">
           <span class="card-badge badge-cyan">THEME & TARGET</span>
-          <h3>🌐 테마 & 표적 형태</h3>
+          <h3>🌐 경기 설정 (모든 화면 공통)</h3>
           <ul style="color:var(--text-muted); font-size:0.9rem; padding-left:1.2rem; line-height:1.75">
-            <li><b>경기장 테마 (3종):</b> 사이버 아레나 (기본: 남색 하늘 · 시안 격자 · 홀로 게이트), 딥 스페이스 (성운 · 행성 · 별빛), 네온 시티 (저녁 하늘과 지평선 빌딩 숲). <b>기기마다 저장되고 그 기기 화면에만 적용</b>됩니다.</li>
+            <li><b>경기장 테마 (3종):</b> 사이버 아레나 (기본: 남색 하늘 · 시안 격자 · 홀로 게이트), 딥 스페이스 (성운 · 행성 · 별빛), 네온 시티 (저녁 하늘과 지평선 빌딩 숲). 바꾸는 순간 경기장을 새로 지어 화면이 잠깐 멈추므로, 선수가 헤드셋을 쓰기 전에 바꾸세요.</li>
             <li><b>표적 모양 (4종):</b> 드론 (기본), 구체, 큐브, 디스크</li>
-            <li><b>난이도 (3종):</b> 쉬움 · 보통 · 어려움. 표적 속도 · 크기와 AI 라이벌의 실력이 함께 바뀌고, 친구와 대결하면 경기를 시작한 쪽의 난이도로 맞춰집니다.</li>
+            <li><b>난이도 (3종):</b> 쉬움 · 보통 · 어려움. 표적 속도 · 크기와 AI 라이벌의 실력이 함께 바뀝니다. 메인 메뉴의 대결 규칙 단계에서도 고를 수 있습니다.</li>
+            <li><b>모든 화면 공통:</b> 1P · 2P · 관전 어느 기기에서 바꿔도 모든 화면이 함께 바뀝니다. 경기 중에는 바꿀 수 없습니다(설정 창에 "경기 중에는 바꿀 수 없어요"). 서버가 기억하므로 서버를 다시 켜면 기본값(사이버 아레나 · 드론 · 보통)으로 돌아갑니다.</li>
           </ul>
         </div>
 
@@ -1591,11 +1594,11 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
 
       <div class="faq-item">
         <div class="faq-question" onclick="toggleFaq(this)">
-          <span>Q9. 기기마다 경기장 테마가 다르게 보입니다.</span>
+          <span>Q9. 1P와 2P(또는 관전 TV)의 경기장 테마나 표적 모양이 다르게 보입니다.</span>
           <span class="faq-arrow">▼</span>
         </div>
         <div class="faq-answer">
-          A. 경기장 테마는 <b>기기마다 따로 저장</b>되고 그 기기 화면에만 적용됩니다. 처음에는 모두 사이버 아레나이며, 다른 테마를 쓰려면 Quest 두 대와 관전 모니터에서 각각 <b>[환경설정]</b> › 경기장 테마를 고르세요.
+          A. 경기 설정(테마 · 표적 모양 · 난이도)은 <b>모든 화면 공통</b>이라 어느 기기에서 바꿔도 1P · 2P · 관전 화면이 함께 바뀝니다. 그래도 다르게 보이면 ① 코드를 업데이트한 뒤 새로고침하지 않은 화면이 있는지 보고 <b>모든 화면(Quest 2대 · 관전 TV)을 새로고침</b>하세요. ② 서버(<code>server</code> 폴더)도 새 코드로 바꾸고 다시 켰는지 확인하세요. 예전 서버는 설정을 맞추지 않아 기기마다 따로 적용되고, 설정 창에 "지금은 이 기기 화면에만 적용돼요"가 보입니다.
         </div>
       </div>
     </section>
