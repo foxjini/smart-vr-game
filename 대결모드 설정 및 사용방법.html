@@ -966,9 +966,10 @@ npm run dev</code></pre>
           <h3>🥊 1:1 실시간 선착순 점수 쟁탈전</h3>
           <ul style="margin-left:1.2rem; color:var(--text-muted); font-size:0.92rem; line-height:1.75">
             <li><b>경기 시작:</b> 선수가 VR에 들어가면 바로, 경기가 끝난 뒤에는 아무나 컨트롤러 <b>방아쇠(트리거)</b>를 당기면 두 선수의 60초 경기가 함께 시작됩니다. 게이트 위 점수판에 <b>"GO!"</b>가 크게 뜹니다. 두 선수 모두 헤드셋을 쓴 뒤 VR에 들어가게 안내하세요.</li>
-            <li><b>🎯 표적 6대 키워드 & 차등 배점 (핵심!):</b><br>
+            <li><b>🎯 표적 8개 키워드 & 차등 배점 (핵심!):</b><br>
               &nbsp;&nbsp;• <b style="color:var(--yellow)">★ 2점 표적 (보너스):</b> <code>정보</code>, <code>통신</code> (정보통신과 핵심전공 표적, 황금빛 발광)<br>
-              &nbsp;&nbsp;• <b style="color:#cbd5e1">● 1점 표적 (기본):</b> <code>제어</code>, <code>회로</code>, <code>인공</code>, <code>전자</code> (기초전공 표적)
+              &nbsp;&nbsp;• <b style="color:#cbd5e1">● 1점 표적 (기본):</b> <code>제어</code>, <code>회로</code>, <code>인공</code>, <code>전자</code> (기초전공 표적)<br>
+              &nbsp;&nbsp;• <b style="color:#f87171">▼ -1점 표적 (감점):</b> <code>기계</code>, <code>전기</code> (라벨에 빨간 "-1점". 맞히면 1점이 깎이고 연속 명중이 끊기며 명중 수에 들어가지 않음. 맞히지 않으면 8초 뒤 사라짐, 한 번에 난이도별 1 · 2 · 3개까지. AI도 피함)
             </li>
             <li><b>동일 타겟 선착순 격파:</b> 같은 표적을 먼저 맞춘 선수만 점수를 얻으며, 즉시 폭발 효과와 함께 사라져 중복 타격이 방지됩니다.</li>
             <li><b>6DoF 모션 아바타:</b> 상대 선수는 바이저 헬멧과 이름표(1P · 2P · AI)로 보이며, 시선 회전과 총구 방향, 발사 레이저가 실시간으로 부드럽게 따라옵니다.</li>
