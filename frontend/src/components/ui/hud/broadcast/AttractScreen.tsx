@@ -7,7 +7,6 @@ import { DIFFICULTY_NAME, KEYWORDS_1PT, KEYWORDS_2PT, KEYWORDS_MINUS } from '@/c
 import { Kbd, Panel, Pill, cx } from '@/components/ui/kit';
 import { MatchResultSummary, NO_READY, ReadyInfo, slotName, winnerHeadline } from '@/components/ui/matchInfo';
 import { useSecondsLeft } from '../hooks';
-import { Logo } from './Logo';
 
 interface AttractScreenProps {
   isDemo: boolean;
@@ -32,13 +31,16 @@ export function AttractScreen({ isDemo, isP1Connected, isP2Connected, difficulty
 
       {/* 왼쪽: 소개 */}
       <div className="absolute left-[112px] top-[96px] w-[1000px]">
-        <Pill tone="gold" icon={GraduationCap} size="xl">
-          인천전자마이스터고 정보통신과 · 프로젝트 작품전시회
+        <Pill tone="gold" icon={GraduationCap} size="2xl">
+          인천전자마이스터고 정보통신과
         </Pill>
-        <div className="mt-9">
-          <Logo size="xl" className="text-[156px]" />
-        </div>
-        <p className="mt-7 text-[46px] font-extrabold leading-tight text-fg">친구와 함께하는 1:1 VR 사격 배틀</p>
+        {/* inline-block: 그라데이션이 글자 폭에 맞게 (시안 → 흰색 → 마젠타) */}
+        <h1 className="mt-9 inline-block bg-linear-to-r from-p1 via-white to-p2 bg-clip-text text-[148px] font-black leading-[1.04] tracking-tight text-transparent drop-shadow-[0_6px_30px_rgb(34_211_238/0.25)]">
+          1:1 VR
+          <br />
+          사격 배틀
+        </h1>
+        <p className="mt-7 text-[46px] font-extrabold leading-tight text-fg">Meta Quest 2</p>
         <p className="mt-3 text-[28px] leading-snug text-fg-2">60초 동안 날아다니는 드론을 더 많이 맞히면 승리!</p>
 
         <ol className="mt-12 grid grid-cols-3 gap-5">

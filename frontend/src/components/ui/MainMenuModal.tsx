@@ -115,8 +115,8 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
           <div className="flex min-w-0 items-center gap-4">
             <Logo className="text-[24px]" />
             <span className="hidden h-6 w-px bg-line-strong md:block" aria-hidden="true" />
-            <span className="hidden items-center gap-1.5 truncate text-[14px] font-semibold text-gold md:flex">
-              <GraduationCap className="size-4 shrink-0" aria-hidden="true" />
+            <span className="hidden items-center gap-2 truncate text-[20px] font-bold text-gold md:flex">
+              <GraduationCap className="size-6 shrink-0" aria-hidden="true" />
               인천전자마이스터고 정보통신과
             </span>
           </div>
@@ -315,8 +315,8 @@ function WelcomeStep({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <div>
-        <p className="text-[15px] font-semibold text-p1">WebXR 1:1 VR 사격 배틀</p>
-        <h1 className="mt-2 text-[40px] font-black leading-[1.1] tracking-tight text-fg md:text-[52px] short:mt-1 short:text-[34px]">사이버 스트라이크</h1>
+        <p className="text-[15px] font-semibold text-p1">Meta Quest 2</p>
+        <h1 className="mt-2 text-[40px] font-black leading-[1.1] tracking-tight text-fg md:text-[52px] short:mt-1 short:text-[34px]">1:1 VR 사격 배틀</h1>
         <p className="mt-3 text-[18px] font-medium leading-relaxed text-fg-2 md:text-[20px] short:mt-1.5 short:text-[16px]">
           친구와 함께 Meta Quest 2를 쓰고 즐기는 60초 레이저 사격 대결
         </p>

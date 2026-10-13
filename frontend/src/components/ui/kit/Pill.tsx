@@ -45,8 +45,8 @@ interface PillProps {
   icon?: LucideIcon;
   dot?: boolean;
   pulse?: boolean;
-  /** xl: 관전 중계 화면(1920 기준)용 */
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** xl: 관전 중계 화면(1920 기준)용, 2xl: 관전 대기 화면에서 멀리서도 읽어야 하는 표시(학교 이름) */
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   /** 크기·색 이외의 배치용 클래스 (max-w-*, ml-auto 등) */
   className?: string;
   title?: string;
@@ -58,6 +58,7 @@ const PILL_SIZE = {
   md: 'h-7 px-2.5 text-[13px] gap-1.5',
   lg: 'h-9 px-3.5 text-[15px] gap-2',
   xl: 'h-11 px-5 text-[19px] gap-2.5',
+  '2xl': 'h-[68px] px-8 text-[34px] gap-3.5',
 };
 
 const PILL_ICON = {
@@ -65,6 +66,7 @@ const PILL_ICON = {
   md: 'size-3.5',
   lg: 'size-4',
   xl: 'size-5',
+  '2xl': 'size-9',
 };
 
 /** 짧은 상태 표시 (역할·연결·모드) */
