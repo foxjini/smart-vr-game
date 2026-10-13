@@ -1,8 +1,11 @@
 'use client';
 
 import React from 'react';
-import { BookOpen, Headset, Pause, Play, Settings, Square, Trophy } from 'lucide-react';
+import { BookOpen, Headset, Pause, Play, Settings, Square, Trophy, Volume2, VolumeX } from 'lucide-react';
 import { Button, ButtonLink, IconButton, Kbd, cx } from '@/components/ui/kit';
+
+/** 관전 TV 소리 상태: 켜짐 / 꺼 둠 / 브라우저가 막음(화면을 한 번 눌러야 함) / 확인 전 */
+export type TvSoundState = 'on' | 'muted' | 'locked' | 'unknown';
 
 interface OperatorControlsProps {
   mode: 'player' | 'spectator';
@@ -18,6 +21,8 @@ interface OperatorControlsProps {
   onOpenSettings: () => void;
   onOpenLeaderboard: () => void;
   onEnterVR?: () => void;
+  /** 관전 화면: TV 소리 켜기·끄기 (M 키와 같음) */
+  sound?: { state: TvSoundState; onToggle: () => void };
   className?: string;
 }
 
@@ -37,6 +42,7 @@ export function OperatorControls({
   onOpenSettings,
   onOpenLeaderboard,
   onEnterVR,
+  sound,
   className,
 }: OperatorControlsProps) {
   const manual = (
@@ -67,6 +73,33 @@ export function OperatorControls({
       labelClassName="hidden xl:inline"
     >
       순위표
+    </Button>
+  );
+  // 아이콘은 지금 상태(켜짐/꺼짐), 글자는 누르면 할 일
+  const soundOff = sound !== undefined && (sound.state === 'muted' || sound.state === 'locked');
+  const soundButton = mode === 'spectator' && sound && (
+    <Button
+      id="btn-sound"
+      icon={soundOff ? VolumeX : Volume2}
+      size="sm"
+      variant={sound.state === 'locked' ? 'gold' : 'secondary'}
+      onClick={sound.onToggle}
+      aria-label={soundOff ? 'TV 소리 켜기' : 'TV 소리 끄기'}
+      title={
+        sound.state === 'locked'
+          ? '브라우저가 소리를 막고 있어요. 누르면 소리가 켜져요 (M)'
+          : soundOff
+            ? 'TV 소리를 켜요 (M)'
+            : 'TV 소리를 꺼요 (M)'
+      }
+      labelClassName="hidden xl:inline"
+      trailing={
+        <span className="hidden 2xl:inline-flex">
+          <Kbd size="xs">M</Kbd>
+        </span>
+      }
+    >
+      {soundOff ? '소리 켜기' : '소리 끄기'}
     </Button>
   );
   const settings = (
@@ -135,6 +168,7 @@ export function OperatorControls({
           </Button>
         )}
         <span className="mx-0.5 h-6 w-px bg-line-strong" aria-hidden="true" />
+        {soundButton}
         {mode === 'spectator' && leaderboard}
         {mode === 'player' ? (
           <IconButton id="btn-settings" icon={Settings} size="sm" label="환경설정" onClick={onOpenSettings} />
@@ -168,6 +202,7 @@ export function OperatorControls({
         </Button>
       )}
       <span className="mx-0.5 h-6 w-px bg-line-strong" aria-hidden="true" />
+      {soundButton}
       {leaderboard}
       {settings}
       {manual}

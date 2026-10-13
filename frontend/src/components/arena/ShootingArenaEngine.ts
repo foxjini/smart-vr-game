@@ -6,7 +6,6 @@ import {
   Difficulty,
   GameStats,
   DifficultyConfig,
-  SoundPresetType,
   ClientRole,
   SpectatorCameraMode,
   PlayerPose,
@@ -242,7 +241,7 @@ export class ShootingArenaEngine {
   private timeSinceRemoteSpawn: number = 0;
   /** 서버 경기 종료 예정 시각 (performance.now 기준, 일시정지·로컬 경기는 null) */
   private matchClockEndsAt: number | null = null;
-  /** 관전 화면 대기용 AI 시연 중 (소리 끔, 결과창 없음) */
+  /** 관전 화면 대기용 AI 시연 중 (사격·명중 소리만 작게, 결과창 없음) */
   private demoActive = false;
 
   // 3D 오브젝트들
@@ -1604,14 +1603,14 @@ export class ShootingArenaEngine {
 
   /**
    * 관람 화면 대기용 AI 시연 (서버 경기에 영향 없음, 실제 경기가 시작되면 자동 전환).
-   * 몇 시간씩 반복되므로 소리를 내지 않음
+   * 몇 시간씩 반복되므로 사격·명중 소리만 작게 내고, 음성 안내·10초 경고음·종료음은 내지 않음
    */
   public startLocalDemo() {
     if (this.disposed || this.isPlaying || this.pendingStartTimer) return;
     this.startGameLocal(null, true);
   }
 
-  /** 대기용 시연을 조용히 끝냄 (결과창·소리 없음) */
+  /** 대기용 시연을 조용히 끝냄 (결과창·종료음 없음) */
   public stopDemo() {
     if (this.isPlaying && this.demoActive) {
       this.stopGameLocal('ABORT');
@@ -1625,7 +1624,8 @@ export class ShootingArenaEngine {
 
   private setDemoActive(active: boolean) {
     this.demoActive = active;
-    this.soundManager.setSuppressed(active);
+    // 시연 중: 효과음은 작게(경고음·종료음 없음), 음성 안내는 끔
+    this.soundManager.setDemoMode(active);
     this.voiceManager.setSuppressed(active);
   }
 
@@ -1783,7 +1783,7 @@ export class ShootingArenaEngine {
     this.notifyStats();
     this.notifyVersusStats();
     if (this.onPauseChange) this.onPauseChange(false);
-    // 시연 중에는 위의 종료음·음성도 꺼져 있었음. 이제 다음 경기를 위해 소리를 되살림
+    // 시연 중에는 위의 종료음·음성이 나지 않았음. 이제 다음 경기를 위해 원래 소리로 되돌림
     const wasDemo = this.demoActive;
     if (wasDemo) this.setDemoActive(false);
     if (this.onGameOver) {
@@ -2179,14 +2179,6 @@ export class ShootingArenaEngine {
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
   };
 
-  public setSoundPreset(preset: SoundPresetType) {
-    this.soundManager.setPreset(preset);
-  }
-
-  public setMasterVolume(vol: number) {
-    this.soundManager.setMasterVolume(vol);
-  }
-
   public setSpectatorCameraMode(mode: SpectatorCameraMode) {
     this.spectatorCam.setMode(mode);
   }
@@ -2261,8 +2253,9 @@ export class ShootingArenaEngine {
     }
     this.detachCallbacks();
     if (this.warmUpTimer) clearTimeout(this.warmUpTimer);
-    // 소리 관리자는 앱 전체가 함께 쓰므로 시연 중 꺼 둔 소리를 되살려 둠
-    this.setDemoActive(false);
+    // 소리 관리자는 앱 전체가 함께 쓰므로 이 엔진이 시연 중이었을 때만 원래 소리로 되돌려 둠
+    // (다른 엔진이 정리될 때 지금 돌고 있는 시연의 소리를 풀지 않게)
+    if (this.demoActive) this.setDemoActive(false);
     if (this.pendingStartTimer) {
       clearTimeout(this.pendingStartTimer);
       this.pendingStartTimer = null;

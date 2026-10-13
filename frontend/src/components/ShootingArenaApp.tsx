@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { ShootingArenaEngine } from '@/components/arena/ShootingArenaEngine';
 import { InputManager } from '@/core/input/InputManager';
 import { SoundManager } from '@/core/audio/SoundManager';
 import { VoiceManager } from '@/core/audio/VoiceManager';
+import { getAudioStatus, installAudioUnlock, probeAutoplay, subscribeAudioStatus, unlockedRecently } from '@/core/audio/audioUnlock';
 import { GameHUD } from '@/components/ui/GameHUD';
 import { SettingsModal } from '@/components/ui/SettingsModal';
 import { GameOverModal } from '@/components/ui/GameOverModal';
@@ -12,6 +13,7 @@ import { MainMenuModal } from '@/components/ui/MainMenuModal';
 import { LeaderboardModal } from '@/components/ui/LeaderboardModal';
 import { AimReticle } from '@/components/ui/hud/AimReticle';
 import { ReadyBanner } from '@/components/ui/hud/ReadyBanner';
+import type { TvSoundState } from '@/components/ui/hud/OperatorControls';
 import { MatchResultSummary, NO_READY, ReadyInfo, aiSlotOf, normalizeWinner } from '@/components/ui/matchInfo';
 import {
   ThemeType,
@@ -98,6 +100,47 @@ function readSavedTheme(): ThemeType {
   return 'cyber';
 }
 
+/** 소리 설정도 기기마다 저장 (관전 TV는 TV대로, 선수 PC는 선수 PC대로) */
+const AUDIO_KEY = 'cyber_strike_audio_v1';
+const SOUND_PRESETS: SoundPresetType[] = ['laser', 'kinetic', 'retro'];
+
+interface SavedAudio {
+  preset: SoundPresetType;
+  sfxVolume: number;
+  voiceEnabled: boolean;
+  voiceVolume: number;
+  /** 관전 TV 소리 끔 (관전 화면일 때만 적용) */
+  tvMuted: boolean;
+}
+
+const DEFAULT_AUDIO: SavedAudio = {
+  preset: DEFAULT_SOUND_PRESET,
+  sfxVolume: DEFAULT_SOUND_VOLUME,
+  voiceEnabled: true,
+  voiceVolume: DEFAULT_VOICE_VOLUME,
+  tvMuted: false,
+};
+
+function readSavedAudio(): SavedAudio {
+  try {
+    const raw = localStorage.getItem(AUDIO_KEY);
+    const saved: unknown = raw ? JSON.parse(raw) : null;
+    if (!saved || typeof saved !== 'object') return DEFAULT_AUDIO;
+    const o = saved as Record<string, unknown>;
+    // 형식이 다르거나 범위를 벗어난 값은 기본값으로
+    const volume = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
+    return {
+      preset: SOUND_PRESETS.includes(o.preset as SoundPresetType) ? (o.preset as SoundPresetType) : DEFAULT_AUDIO.preset,
+      sfxVolume: volume(o.sfxVolume, DEFAULT_AUDIO.sfxVolume),
+      voiceEnabled: typeof o.voiceEnabled === 'boolean' ? o.voiceEnabled : DEFAULT_AUDIO.voiceEnabled,
+      voiceVolume: volume(o.voiceVolume, DEFAULT_AUDIO.voiceVolume),
+      tvMuted: o.tvMuted === true,
+    };
+  } catch {
+    return DEFAULT_AUDIO;
+  }
+}
+
 /** 관전 화면: 실제 경기 결과를 보여 주는 시간 / 시연이 끝난 뒤 다음 시연까지 쉬는 시간 */
 const SPECTATOR_RESULT_MS = 20000;
 const DEMO_RESTART_MS = 5000;
@@ -132,10 +175,14 @@ export default function ShootingArenaApp() {
   const [currentTheme, setCurrentTheme] = useState<ThemeType>(readSavedTheme);
   const [currentShape, setCurrentShape] = useState<TargetShape>('drone');
   const [currentDifficulty, setCurrentDifficulty] = useState<Difficulty>('normal');
-  const [soundPreset, setSoundPreset] = useState<SoundPresetType>(DEFAULT_SOUND_PRESET);
-  const [soundVolume, setSoundVolume] = useState<number>(DEFAULT_SOUND_VOLUME);
-  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
-  const [voiceVolume, setVoiceVolume] = useState<number>(DEFAULT_VOICE_VOLUME);
+  const [savedAudio] = useState<SavedAudio>(readSavedAudio);
+  const [soundPreset, setSoundPreset] = useState<SoundPresetType>(savedAudio.preset);
+  const [soundVolume, setSoundVolume] = useState<number>(savedAudio.sfxVolume);
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(savedAudio.voiceEnabled);
+  const [voiceVolume, setVoiceVolume] = useState<number>(savedAudio.voiceVolume);
+  const [tvMuted, setTvMuted] = useState<boolean>(savedAudio.tvMuted);
+  /** 브라우저가 소리를 허락했는지 (관전 TV는 막혀 있으면 "한 번 클릭" 안내) */
+  const audioStatus = useSyncExternalStore(subscribeAudioStatus, getAudioStatus, () => 'unknown' as const);
 
   const [stats, setStats] = useState<GameStats>({
     score: 0,
@@ -204,11 +251,6 @@ export default function ShootingArenaApp() {
 
     const engine = new ShootingArenaEngine(containerRef.current, readSavedTheme());
     engineRef.current = engine;
-
-    // 효과음 종류는 SoundManager 기본값(레이저)을 그대로 씀. setSoundPreset은 미리 듣기 소리를 내므로 처음 열 때는 부르지 않음
-    engine.setMasterVolume(DEFAULT_SOUND_VOLUME);
-    VoiceManager.getInstance().setEnabled(true);
-    VoiceManager.getInstance().setVolume(DEFAULT_VOICE_VOLUME);
 
     engine.onStatsUpdate = (newStats) => {
       setStats(newStats);
@@ -375,7 +417,42 @@ export default function ShootingArenaApp() {
     return () => clearTimeout(timer);
   }, [clientRole, isPlaying, isMainMenuOpen, spectatorResult, spectatorResultUntil]);
 
-  // 관람 카메라 단축키 바인딩 (1, 2, 3, 4)
+  // 소리 설정을 소리 관리자에 반영하고 이 기기에 저장 (소리를 내거나 AudioContext를 만들지 않음)
+  useEffect(() => {
+    const sound = SoundManager.getInstance();
+    const voice = VoiceManager.getInstance();
+    // TV 소리 끔은 관전 화면일 때만 (같은 기기를 선수로 바꾸면 소리가 남)
+    const muted = tvMuted && clientRole === 'SPECTATOR';
+    sound.setPreset(soundPreset);
+    sound.setMasterVolume(soundVolume);
+    sound.setMuted(muted);
+    voice.setEnabled(voiceEnabled);
+    voice.setVolume(voiceVolume);
+    voice.setMuted(muted);
+    try {
+      const saved: SavedAudio = { preset: soundPreset, sfxVolume: soundVolume, voiceEnabled, voiceVolume, tvMuted };
+      localStorage.setItem(AUDIO_KEY, JSON.stringify(saved));
+    } catch {
+      // 저장소를 쓸 수 없으면 이번 화면에서만 씀
+    }
+  }, [soundPreset, soundVolume, voiceEnabled, voiceVolume, tvMuted, clientRole]);
+
+  // 브라우저가 클릭 없이도 소리를 허락하는지 확인하고, 첫 클릭·키 입력에서 소리를 켬
+  useEffect(() => {
+    void probeAutoplay();
+    return installAudioUnlock(() => {
+      SoundManager.getInstance().unlock();
+      VoiceManager.getInstance().unlock();
+    });
+  }, []);
+
+  /** 관전 TV 소리 켜기·끄기 (오른쪽 위 버튼·M 키). 같은 클릭·키로 방금 소리가 풀렸으면 끄지 않고 켜 둠 */
+  const handleToggleTvSound = useCallback(() => {
+    if (unlockedRecently()) setTvMuted(false);
+    else setTvMuted((muted) => !muted);
+  }, []);
+
+  // 관람 카메라 단축키 바인딩 (1, 2, 3, 4) + TV 소리 켜기·끄기 (M)
   useEffect(() => {
     const handleCamKey = (e: KeyboardEvent) => {
       if (clientRole !== 'SPECTATOR') return;
@@ -386,10 +463,12 @@ export default function ShootingArenaApp() {
       if (e.key === '2') handleSelectSpectatorCamera('P1_VIEW');
       if (e.key === '3') handleSelectSpectatorCamera('P2_VIEW');
       if (e.key === '4') handleSelectSpectatorCamera('ORBIT');
+      // 한글 입력 상태에서는 e.key가 'ㅡ'라서 자판 위치(e.code)로 봄
+      if (e.code === 'KeyM' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) handleToggleTvSound();
     };
     window.addEventListener('keydown', handleCamKey);
     return () => window.removeEventListener('keydown', handleCamKey);
-  }, [clientRole, handleSelectSpectatorCamera]);
+  }, [clientRole, handleSelectSpectatorCamera, handleToggleTvSound]);
 
   // 게임 제어 함수들
   const handleStartGame = useCallback(() => {
@@ -498,33 +577,18 @@ export default function ShootingArenaApp() {
     }
   }, []);
 
+  // 소리 설정은 위의 효과가 소리 관리자에 반영하고 저장함
   const handleSelectSoundPreset = useCallback((preset: SoundPresetType) => {
     setSoundPreset(preset);
-    if (engineRef.current) {
-      engineRef.current.setSoundPreset(preset);
-    } else {
-      SoundManager.getInstance().setPreset(preset);
-    }
+    // 고른 종류를 바로 들려줌 (시연 중이어도 원래 크기)
+    const sound = SoundManager.getInstance();
+    sound.setPreset(preset);
+    sound.previewFire();
   }, []);
 
-  const handleUpdateSoundVolume = useCallback((vol: number) => {
-    setSoundVolume(vol);
-    if (engineRef.current) {
-      engineRef.current.setMasterVolume(vol);
-    } else {
-      SoundManager.getInstance().setMasterVolume(vol);
-    }
-  }, []);
-
-  const handleToggleVoice = useCallback((enabled: boolean) => {
-    setVoiceEnabled(enabled);
-    VoiceManager.getInstance().setEnabled(enabled);
-  }, []);
-
-  const handleUpdateVoiceVolume = useCallback((vol: number) => {
-    setVoiceVolume(vol);
-    VoiceManager.getInstance().setVolume(vol);
-  }, []);
+  const handleUpdateSoundVolume = useCallback((vol: number) => setSoundVolume(vol), []);
+  const handleToggleVoice = useCallback((enabled: boolean) => setVoiceEnabled(enabled), []);
+  const handleUpdateVoiceVolume = useCallback((vol: number) => setVoiceVolume(vol), []);
 
   const handleOpenLeaderboard = useCallback((id?: string) => {
     setHighlightEntryId(id);
@@ -597,6 +661,9 @@ export default function ShootingArenaApp() {
   // 플레이어가 PC로 경기 중이면 마우스 화살표 대신 실제 조준점(AimReticle)만 보이게 함
   const isAiming = isPlaying && clientRole !== 'SPECTATOR';
 
+  // 관전 TV 소리 상태: 꺼 둠이 먼저, 그다음 브라우저가 막음(화면을 한 번 눌러야 함)
+  const tvSound: TvSoundState = tvMuted ? 'muted' : audioStatus === 'allowed' ? 'on' : audioStatus;
+
   // 친구 대결 준비 띠: 경기 전에 나나 상대가 준비했을 때 (선수 화면만)
   const mySlot: 1 | 2 | null = clientRole === 'P1' ? 1 : clientRole === 'P2' ? 2 : null;
   const meReady = mySlot === 1 ? readyInfo.p1 : mySlot === 2 ? readyInfo.p2 : false;
@@ -653,6 +720,8 @@ export default function ShootingArenaApp() {
           recentMatches={recentMatches}
           readyInfo={readyInfo}
           hideStartHint={showReadyBanner}
+          tvSound={tvSound}
+          onToggleTvSound={handleToggleTvSound}
         />
       )}
 
@@ -709,6 +778,7 @@ export default function ShootingArenaApp() {
         onUpdateVoiceVolume={handleUpdateVoiceVolume}
         clientRole={clientRole}
         onSelectRole={handleSelectRole}
+        soundMuted={tvMuted && clientRole === 'SPECTATOR'}
       />
 
       {/* 5. 플레이어 결과창 (관전 화면은 중계 화면 안의 결과 화면) - 열릴 때마다 새로 마운트해 기록 등록 상태 초기화 */}

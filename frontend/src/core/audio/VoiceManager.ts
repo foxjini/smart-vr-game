@@ -1,4 +1,5 @@
 import { VoiceEventType } from '@/types';
+import { isAudioAllowed } from './audioUnlock';
 
 /**
  * 한국어 오퍼레이터 음성 안내 시스템 (VoiceManager v2.0 - 내장 고음질 오디오 엔진)
@@ -9,6 +10,8 @@ export class VoiceManager {
   private static instance: VoiceManager;
   public isVoiceEnabled: boolean = true;
   public voiceVolume: number = 1.0;
+  /** 관전 TV의 소리 끄기 (켜기·끄기 설정과 따로) */
+  public isMuted = false;
   private audioCtx: AudioContext | null = null;
   private lastSpokenTime: number = 0;
   private audioCache: Map<VoiceEventType, HTMLAudioElement> = new Map();
@@ -65,8 +68,18 @@ export class VoiceManager {
       }
     }
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+      this.audioCtx.resume().catch(() => {});
     }
+  }
+
+  /** 사용자 조작(클릭·키) 안에서 불러 무전 비프음용 AudioContext를 만들거나 깨움 */
+  public unlock() {
+    this.initAudioContext();
+  }
+
+  /** 지금 음성을 낼 수 있는지: 켜져 있고, 소리를 끄지 않았고, 브라우저가 소리를 허락함(화면을 한 번 누름) */
+  private canSpeak(): boolean {
+    return this.isVoiceEnabled && !this.isMuted && isAudioAllowed();
   }
 
   /** SF 군사 무전기 통신 비프음 (Radio Chirp: 치익- 삐빅) */
@@ -93,14 +106,20 @@ export class VoiceManager {
     osc.stop(now + 0.12);
   }
 
-  /** 한국어 음성 안내 멘트 재생 (내장 MP3 파일 기반으로 100% 호환) */
-  public speak(event: VoiceEventType) {
-    if (!this.isVoiceEnabled || this.suppressed) return;
+  /**
+   * 한국어 음성 안내 멘트 재생 (내장 MP3 파일 기반으로 100% 호환).
+   * force: 설정 창 [들어 보기]처럼 시연 중이어도·방금 다른 안내가 나왔어도 들려줌 (켜기·소리 끄기·브라우저 허락은 그대로 따름)
+   */
+  public speak(event: VoiceEventType, options: { force?: boolean } = {}) {
     if (typeof window === 'undefined') return;
+    // 소리를 낼 수 없으면 무전 비프음용 AudioContext도 만들지 않음 (클릭 전에 만들면 브라우저 경고가 남)
+    if (!this.canSpeak()) return;
+    const force = options.force === true;
+    if (this.suppressed && !force) return;
 
     // 너무 잦은 음성 겹침 방지 (최소 0.6초 간격)
     const now = Date.now();
-    if (now - this.lastSpokenTime < 600 && event !== 'AMMO_EMPTY') {
+    if (!force && now - this.lastSpokenTime < 600 && event !== 'AMMO_EMPTY') {
       return;
     }
     this.lastSpokenTime = now;
@@ -123,6 +142,8 @@ export class VoiceManager {
     if (!url) return;
 
     setTimeout(() => {
+      // 그사이 소리를 끄거나 음성을 껐으면 내지 않음
+      if (!this.canSpeak()) return;
       try {
         let audio = this.audioCache.get(event);
         if (!audio) {
@@ -170,9 +191,21 @@ export class VoiceManager {
   }
 
   /** 관전 화면 대기용 시연처럼 잠시 안내 음성을 내지 않을 때 (켜기·끄기 설정은 그대로) */
-  private suppressed = false;
+  public suppressed = false;
   public setSuppressed(suppressed: boolean) {
     this.suppressed = suppressed;
+  }
+
+  /** 관전 TV의 소리 끄기: 나오던 안내도 멈춤 */
+  public setMuted(muted: boolean) {
+    this.isMuted = muted;
+    if (muted && this.currentAudio) {
+      try {
+        this.currentAudio.pause();
+      } catch {
+        // ignore
+      }
+    }
   }
 
   public setVolume(volume: number) {

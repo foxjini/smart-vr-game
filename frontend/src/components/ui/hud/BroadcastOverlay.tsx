@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert, VolumeX } from 'lucide-react';
 import { ConnectionIssue, Difficulty, GameStats, SpectatorCameraMode, VersusMatchStats } from '@/types';
 import { CAMERA_NAME, CAMERA_ORDER } from '@/constants/labels';
 import { Pill, cx } from '@/components/ui/kit';
 import { MatchResultSummary, NO_READY, ReadyInfo, aiSlotOf } from '@/components/ui/matchInfo';
 import { useIdle, useStageScale } from './hooks';
-import { OperatorControls } from './OperatorControls';
+import { OperatorControls, TvSoundState } from './OperatorControls';
 import { connectionText } from './PlayerHUD';
 import { AttractScreen } from './broadcast/AttractScreen';
 import { LiveBroadcast } from './broadcast/LiveBroadcast';
@@ -33,6 +33,9 @@ export interface BroadcastOverlayProps {
   recentMatches: MatchResultSummary[];
   /** 경기 전 준비 상태 (친구 대결 준비 띠·대기 화면 자리 표시) */
   readyInfo?: ReadyInfo;
+  /** TV 소리 상태 (꺼 둠·브라우저가 막음이면 운영 버튼이 숨은 동안 오른쪽 위에 표시) */
+  tvSound?: TvSoundState;
+  onToggleTvSound?: () => void;
   onStartGame: () => void;
   onPauseGame: () => void;
   onAbortGame?: () => void;
@@ -76,6 +79,8 @@ export function BroadcastOverlay({
   resultUntil,
   recentMatches,
   readyInfo = NO_READY,
+  tvSound = 'unknown',
+  onToggleTvSound,
   onStartGame,
   onPauseGame,
   onAbortGame,
@@ -137,6 +142,7 @@ export function BroadcastOverlay({
           onAbortGame={onAbortGame}
           onOpenSettings={onOpenSettings}
           onOpenLeaderboard={onOpenLeaderboard}
+          sound={onToggleTvSound ? { state: tvSound, onToggle: onToggleTvSound } : undefined}
           className="rounded-xl border border-line bg-panel/90 p-1.5 shadow-panel backdrop-blur-md"
         />
         <div
@@ -169,6 +175,22 @@ export function BroadcastOverlay({
           </Pill>
         )}
       </div>
+
+      {/* TV 소리 안내 (운영 버튼이 숨은 동안만, 같은 자리): 브라우저가 소리를 막음 / 소리를 꺼 둠 */}
+      {(tvSound === 'locked' || tvSound === 'muted') && (
+        <div
+          data-testid="tv-sound-chip"
+          role="status"
+          className={cx(
+            'absolute right-5 top-5 transition-[opacity,visibility] duration-500',
+            idle ? 'visible opacity-100' : 'invisible opacity-0'
+          )}
+        >
+          <Pill tone={tvSound === 'locked' ? 'warn' : 'neutral'} icon={VolumeX} size="xl" className="shadow-panel backdrop-blur-md">
+            {tvSound === 'locked' ? '화면을 한 번 클릭하면 소리가 나요' : '소리 꺼짐 · M 키로 켜기'}
+          </Pill>
+        </div>
+      )}
     </div>
   );
 }

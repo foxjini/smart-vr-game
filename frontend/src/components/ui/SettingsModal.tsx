@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Check, Mic, Monitor, Settings } from 'lucide-react';
 import { ThemeType, TargetShape, Difficulty, SoundPresetType, ClientRole } from '@/types';
 import { VoiceManager } from '@/core/audio/VoiceManager';
+import { DEMO_FX_LEVEL } from '@/core/audio/SoundManager';
 import { DIFFICULTY_HINT, DIFFICULTY_NAME, ROLE_NAME, SHAPE_NAME, THEME_NAME } from '@/constants/labels';
 import { Button, ModalShell, Segmented, Slider } from '@/components/ui/kit';
 
@@ -30,6 +31,8 @@ interface SettingsModalProps {
   onUpdateVoiceVolume: (vol: number) => void;
   clientRole?: ClientRole;
   onSelectRole?: (role: ClientRole) => void;
+  /** 관전 TV 소리를 꺼 둠 (미리 듣기도 들리지 않음을 알림) */
+  soundMuted?: boolean;
 }
 
 const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
@@ -85,6 +88,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateVoiceVolume,
   clientRole = 'P1',
   onSelectRole,
+  soundMuted = false,
 }) => {
   const [hostInput, setHostInput] = useState(serverHost);
   const [hostSaved, setHostSaved] = useState(false);
@@ -153,7 +157,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 ]}
                 className="w-56"
               />
-              <Button variant="secondary" icon={Mic} disabled={!voiceEnabled} onClick={() => VoiceManager.getInstance().speak('GAME_START')}>
+              <Button variant="secondary" icon={Mic} disabled={!voiceEnabled} onClick={() => VoiceManager.getInstance().speak('GAME_START', { force: true })}>
                 들어 보기
               </Button>
             </div>
@@ -168,6 +172,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onChange={onUpdateVoiceVolume}
             format={(v) => `${Math.round(v * 100)}%`}
           />
+          <p className="text-[13px] leading-relaxed text-fg-3">
+            소리 설정은 이 기기에 저장돼요.
+            {clientRole === 'SPECTATOR' && ` 대기 화면의 AI 시연은 효과음 크기의 ${Math.round(DEMO_FX_LEVEL * 100)}%로 작게 나요.`}
+          </p>
+          {soundMuted && (
+            <p className="text-[13px] font-semibold leading-relaxed text-warn">
+              TV 소리를 꺼 두어 미리 듣기도 들리지 않아요. 오른쪽 위 [소리 켜기] 버튼이나 M 키로 켜세요.
+            </p>
+          )}
         </Section>
 
         <Section title="조작 (PC)">

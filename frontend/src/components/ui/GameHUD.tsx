@@ -5,6 +5,7 @@ import { GameStats, SystemStatus, VersusMatchStats, ClientRole, SpectatorCameraM
 import { MatchResultSummary, NO_READY, ReadyInfo } from '@/components/ui/matchInfo';
 import { PlayerHUD } from '@/components/ui/hud/PlayerHUD';
 import { BroadcastOverlay } from '@/components/ui/hud/BroadcastOverlay';
+import type { TvSoundState } from '@/components/ui/hud/OperatorControls';
 
 interface GameHUDProps {
   stats: GameStats;
@@ -40,6 +41,9 @@ interface GameHUDProps {
   readyInfo?: ReadyInfo;
   /** 선수 화면: 준비 띠가 보이면 가운데 '준비되면 시작!' 안내를 숨김 */
   hideStartHint?: boolean;
+  /** 관전 화면: TV 소리 상태와 켜기·끄기 */
+  tvSound?: TvSoundState;
+  onToggleTvSound?: () => void;
 }
 
 /** 역할에 따라 관전 중계 화면 또는 플레이어 HUD를 보여 줌 */
@@ -70,6 +74,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   recentMatches = [],
   readyInfo = NO_READY,
   hideStartHint = false,
+  tvSound,
+  onToggleTvSound,
 }) => {
   if (clientRole === 'SPECTATOR') {
     return (
@@ -90,6 +96,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         resultUntil={spectatorResultUntil}
         recentMatches={recentMatches}
         readyInfo={readyInfo}
+        tvSound={tvSound}
+        onToggleTvSound={onToggleTvSound}
         onStartGame={onStartGame}
         onPauseGame={onPauseGame}
         onAbortGame={onAbortGame}
