@@ -755,6 +755,7 @@
               <pre><code>New-NetFirewallRule -DisplayName "VR Game Web (3000)" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
 New-NetFirewallRule -DisplayName "VR Game Relay (8000)" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow</code></pre>
             </div>
+            <p><b>새 네트워크(휴대폰 핫스팟 등)에 연결했다면:</b> Windows가 처음 보는 네트워크를 '공용'으로 잡는 경우가 많습니다. node · python을 처음 실행할 때 뜬 허용 창에서 '개인 네트워크'만 체크했다면 공용 네트워크에서는 막히므로, <b>설정 › 네트워크 및 인터넷 › Wi-Fi › (연결된 네트워크)</b>에서 네트워크 프로필을 <b>개인</b>으로 바꾸세요.</p>
           </div>
         </div>
 
@@ -1052,7 +1053,16 @@ npm run dev</code></pre>
           <h3>📡 Wi-Fi IP가 변경되었을 때</h3>
           <p>
             전시회장 현장 공유기에 연결하면서 PC IP가 변경된 경우, CMD에서 <code>ipconfig</code>로 새 IP를 확인한 후 Quest 2 주소창에 새 IP로 접속하세요.<br>
-            (사전 설정했던 flags 설정은 IP 대역이 크게 바뀌지 않는 한 유지됩니다.)
+            Quest 2의 <b>chrome://flags</b> 설정은 주소를 정확히 적는 목록이라, IP가 바뀌면 두 대 모두 새 IP로 다시 넣고 <b>Relaunch</b>해야 [VR 배틀 시작]이 됩니다. 새 네트워크가 Windows에서 '공용'으로 잡혔다면 네트워크 프로필을 <b>개인</b>으로 바꾸세요.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>📶 인터넷 없는 곳에서 (휴대폰 핫스팟)</h3>
+          <p>
+            게임은 <b>인터넷 없이 동작</b>합니다. 서버 PC와 Quest 2 두 대(관전 PC가 따로면 그것까지)가 같은 핫스팟에 연결되면 됩니다.<br>
+            ① 설치(<code>npm install</code> · <code>pip install</code>)는 인터넷이 되는 곳에서 미리 ② 핫스팟에서는 PC IP가 바뀜(아이폰 보통 172.20.10.x, 안드로이드 보통 192.168.x.x) → Quest 두 대의 flags를 새 IP로 ③ Windows 네트워크 프로필 '개인' ④ Quest에 "인터넷 없음"이 떠도 연결이 유지되면 정상 ⑤ 휴대폰은 충전기 연결, 자동 꺼짐 끄기, 가능하면 5GHz.<br>
+            전시 전에 휴대폰 데이터를 끈 채로 한 경기를 해 보세요. 드물게 휴대폰이 기기끼리의 통신을 막는 경우가 있어, 그때는 다른 휴대폰이나 무선 공유기를 쓰세요.
           </p>
         </div>
 

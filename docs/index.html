@@ -982,7 +982,7 @@
             <ul class="bullet-check">
               <li><b>Node.js:</b> v20.9 이상 (Next.js 16 필수 조건, v22 LTS 권장, 터미널에서 <code>node -v</code> 로 확인)</li>
               <li><b>Python:</b> v3.10 이상 권장 (터미널에서 <code>python --version</code> 으로 확인)</li>
-              <li><b>동일 Wi-Fi 네트워크:</b> 개발 PC와 Meta Quest 2 헤드셋이 <b>반드시 동일한 공유기(같은 서브넷)</b>에 연결되어 있어야 합니다.</li>
+              <li><b>동일 Wi-Fi 네트워크:</b> 개발 PC와 Meta Quest 2 헤드셋이 <b>반드시 동일한 공유기(같은 서브넷)</b>에 연결되어 있어야 합니다. 인터넷 연결은 필요 없어 휴대폰 핫스팟으로도 됩니다(1-5 참고).</li>
             </ul>
             <div class="step-sub-box">
               <b>📌 개발 PC의 사설 IP(IPv4) 확인 방법:</b><br>
@@ -1067,6 +1067,29 @@ cd frontend
               <pre><code><span class="comment"># 3000번(Next.js) 및 8000번(FastAPI) 인바운드 방화벽 규칙 추가</span>
 New-NetFirewallRule -DisplayName "Nunchuk VR Game (3000)" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
 New-NetFirewallRule -DisplayName "Nunchuk VR Relay (8000)" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow</code></pre>
+            </div>
+            <div class="step-sub-box">
+              <b>📌 네트워크가 바뀌었을 때 (휴대폰 핫스팟 등):</b> Windows는 처음 연결한 네트워크를 '공용 네트워크'로 잡는 경우가 많습니다. node · python을 처음 실행할 때 뜬 허용 창에서 '개인 네트워크'만 체크했다면 공용 네트워크에서는 접속이 막히므로, <b>설정 › 네트워크 및 인터넷 › Wi-Fi › (연결된 네트워크)</b>에서 네트워크 프로필을 <b>개인</b>으로 바꾸세요.
+            </div>
+          </div>
+        </div>
+
+        <!-- 1-5 인터넷 없는 장소 (휴대폰 핫스팟) -->
+        <div class="step-item">
+          <div class="step-number">05</div>
+          <div class="step-content">
+            <h3>인터넷 없는 장소에서 운영 (휴대폰 핫스팟)</h3>
+            <p>게임은 인터넷 없이 동작합니다. 경기 중 오가는 통신은 서버 PC와 Quest 2 · 관전 화면 사이(포트 3000 웹 화면, 8000 중계 서버)뿐이므로, 휴대폰 핫스팟처럼 인터넷이 없는 Wi-Fi에서도 모든 기기가 같은 네트워크에 연결되면 됩니다.</p>
+            <ul class="bullet-check">
+              <li><b>설치는 미리:</b> 인터넷이 되는 곳에서 <code>frontend</code> 폴더의 <code>npm install</code>, <code>server</code> 폴더의 <code>pip install -r requirements.txt</code>를 끝내 둡니다. 글꼴 · VR 글자 · 음성 파일은 프로젝트 안에 들어 있습니다.</li>
+              <li><b>PC 주소가 바뀝니다:</b> 핫스팟에 연결한 뒤 <code>ipconfig</code>로 IPv4 주소를 다시 확인합니다(아이폰은 보통 <code>172.20.10.x</code>, 안드로이드는 보통 <code>192.168.x.x</code>). 위쪽 IP 입력란에 넣으면 이 문서의 주소가 모두 바뀝니다.</li>
+              <li><b>Quest 2 두 대의 flags를 새 주소로:</b> <code>chrome://flags</code> › <b>Insecure origins treated as secure</b>에 <code class="dynamic-flags">http://192.168.1.150:3000,http://192.168.1.150:8000</code>을 넣고 <b>Relaunch</b>합니다. 이 설정은 주소를 정확히 적는 목록이라, 주소가 바뀌면 다시 넣어야 [VR 배틀 시작]이 됩니다.</li>
+              <li><b>Windows 방화벽:</b> 처음 연결한 핫스팟은 '공용 네트워크'로 잡히기 쉽습니다. 네트워크 프로필을 <b>개인</b>으로 바꾸세요(1-4 참고).</li>
+              <li><b>Quest가 다른 Wi-Fi로 넘어가지 않게:</b> "인터넷 없음"이 표시돼도 연결이 유지되면 정상입니다. 전시장에서는 핫스팟에만 연결해 두세요.</li>
+              <li><b>핫스팟 휴대폰:</b> 충전기를 연결하고, "연결된 기기가 없으면 자동으로 끄기"를 끄고, 최대 연결 수(서버 PC + Quest 2대 + 관전 PC)를 확인합니다. 가능하면 5GHz를 쓰세요.</li>
+            </ul>
+            <div class="step-sub-box">
+              <b>📌 전시 전 리허설:</b> 휴대폰 데이터를 끈 상태로 서버 PC와 Quest 2대를 핫스팟에 연결해 한 경기를 해 보세요. 드물게 휴대폰이 연결된 기기끼리의 통신을 막는 경우가 있습니다. 방화벽을 확인했는데도 Quest에서 <code>http://<span class="dynamic-ip">192.168.1.150</span>:3000</code>이 열리지 않으면 다른 휴대폰이나 무선 공유기를 쓰세요. 이 설명서 화면은 인터넷이 없으면 기본 글꼴로 보입니다(내용은 같음).
             </div>
           </div>
         </div>
@@ -1599,6 +1622,16 @@ SERVER_PORT = <span class="param">"8000"</span></code></pre>
         </div>
         <div class="faq-answer">
           A. 경기 설정(테마 · 표적 모양 · 난이도)은 <b>모든 화면 공통</b>이라 어느 기기에서 바꿔도 1P · 2P · 관전 화면이 함께 바뀝니다. 그래도 다르게 보이면 ① 코드를 업데이트한 뒤 새로고침하지 않은 화면이 있는지 보고 <b>모든 화면(Quest 2대 · 관전 TV)을 새로고침</b>하세요. ② 서버(<code>server</code> 폴더)도 새 코드로 바꾸고 다시 켰는지 확인하세요. 예전 서버는 설정을 맞추지 않아 기기마다 따로 적용되고, 설정 창에 "지금은 이 기기 화면에만 적용돼요"가 보입니다.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          <span>Q10. 인터넷이 안 되는 곳(휴대폰 핫스팟)에서도 할 수 있나요?</span>
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-answer">
+          A. 네. 게임은 인터넷 없이 동작하고, 서버 PC와 Quest 2가 같은 Wi-Fi(휴대폰 핫스팟도 됨)에 연결되어 있으면 됩니다. 다만 ① 설치(<code>npm install</code> · <code>pip install</code>)는 인터넷이 되는 곳에서 미리 하고, ② 핫스팟에서는 PC 주소가 바뀌므로 Quest 두 대의 <code>chrome://flags</code>에 새 주소를 다시 넣고, ③ Windows 네트워크 프로필을 '개인'으로 바꾸세요. 자세한 순서는 <b>1-5 인터넷 없는 장소에서 운영</b>을 보세요.
         </div>
       </div>
     </section>
